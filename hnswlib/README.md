@@ -1,6 +1,8 @@
 # Hnswlib - fast approximate nearest neighbor search
 Header-only C++ HNSW implementation with python bindings.
 
+### NOTE: Some (or much of) the things in this README may not work with the modifications to the library that I made specifically for RAD. 
+
 **NEWS:**
 
 **version 0.6** 
