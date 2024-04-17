@@ -1,0 +1,15 @@
+name: rad
+channels:
+  - anaconda
+  - conda-forge
+  - pytorch
+  - defaults
+dependencies:
+  - python=3.7
+  - rdkit
+  - pip
+  - numpy
+  - tqdm
+  - pybind11
+  - graph-tool
+  - jupyter
