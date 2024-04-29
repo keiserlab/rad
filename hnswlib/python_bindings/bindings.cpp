@@ -726,12 +726,12 @@ inline void register_index_class(py::module &m, std::string className) {
         ))
 
         .def("__repr__", [className](const Index<dist_t, data_t> &a) {
-            return "<hnswlib." + className + "(space='" + a.space_name + "', dim=" + std::to_string(a.dim) + ") distance type " + typeName<dist_t>() + ", data type " + typeName<data_t>() + ">";
+            return "<hnswlib_rad." + className + "(space='" + a.space_name + "', dim=" + std::to_string(a.dim) + ") distance type " + typeName<dist_t>() + ", data type " + typeName<data_t>() + ">";
         });
 };
 
-PYBIND11_PLUGIN(hnswlib) {
-        py::module m("hnswlib");
+PYBIND11_PLUGIN(hnswlib_rad) {
+        py::module m("hnswlib_rad");
         register_index_class<float, unsigned char>(m, "TanimotoIndex");
         return m.ptr();
 }

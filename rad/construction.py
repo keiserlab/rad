@@ -1,4 +1,4 @@
-import hnswlib
+import hnswlib_rad
 from tqdm import tqdm
 import graph_tool.all as gt
 import struct
@@ -81,7 +81,7 @@ def processLinkLists(hnsw_index):
     return results
 
 def getGraphs(data, ef_construction=400, M=16):
-    p = hnswlib.TanimotoIndex(dim=data.shape[1])
+    p = hnswlib_rad.TanimotoIndex(dim=data.shape[1])
 
     p.init_index(max_elements=len(data), ef_construction=ef_construction, M=M)
     start = time.time()

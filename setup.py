@@ -85,7 +85,7 @@ extra_objects = []
 
 ext_modules = [
     Extension(
-        'hnswlib',
+        'hnswlib_rad',
         sources=['hnswlib/python_bindings/bindings.cpp'],
         include_dirs=include_dirs,
         libraries=libraries,
