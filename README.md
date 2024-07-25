@@ -17,6 +17,7 @@ There are two primary things that must be done to run RAD:
 
 ### Constructing the HNSW
 Constructing the HNSW graphs is as simple as passing in your fingerprints and the HNSW construction parameters *ef_construction* and *M*.
+*ef_construction* controls the number of candidates considered as potential neighbors during element insertion, while *M* controls how many of these candidates are actually connected to the inserted element.
 
 ```
 from rad.construction import getGraphs
