@@ -37,7 +37,7 @@ class RedisScoredSet(ScoredSet):
 
     def __iter__(self):
         for key in self.r.lrange(self.scored_list, 0, -1):
-            yield (key, self.getScore(key))
+            yield (int(key), self.getScore(key))
 
     def __len__(self):
         return self.r.llen(self.scored_list)
