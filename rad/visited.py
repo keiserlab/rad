@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-import redis
 
 class VisitedSet(ABC):
     @abstractmethod
@@ -7,8 +6,11 @@ class VisitedSet(ABC):
         pass
 
 class RedisVisited(VisitedSet):
-    def __init__(self, redis_host='localhost', redis_port=6379, visited_name='visited'):
-        self.r = redis.StrictRedis(host=redis_host, port=redis_port, decode_responses=True)
+    def __init__(self, redis_client=None, visited_name='visited'):
+        if redis_client is None:
+            raise ValueError("RedisScoredSet requires a valud Redis client instance.")
+
+        self.r = redis_client
         self.visited_name = visited_name
 
         # Checking and inserting into the visited set needs to be atomic

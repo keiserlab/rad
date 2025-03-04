@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from typing import Tuple
-import redis
 
 class PriorityQueue(ABC):
     @abstractmethod
@@ -12,8 +11,11 @@ class PriorityQueue(ABC):
         pass
 
 class RedisPQ(PriorityQueue):
-    def __init__(self, redis_host='localhost', redis_port=6379, queue_name='pq'):
-        self.r = redis.StrictRedis(host=redis_host, port=redis_port, decode_responses=True)
+    def __init__(self, redis_client=None, queue_name='pq'):
+        if redis_client is None:
+            raise ValueError("RedisScoredSet requires a valud Redis client instance.")
+
+        self.r = redis_client
         self.queue_name = queue_name
 
         # Need popping to be atomic so multiple processes don't pop the same node

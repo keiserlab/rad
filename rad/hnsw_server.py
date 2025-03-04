@@ -1,5 +1,6 @@
 import multiprocessing
 
+# TODO: Allow a single central HNSW server that can feed neighbors to jobs across an HPC
 class HNSWServer:
     def __init__(self, hnsw):
         self.hnsw = hnsw
@@ -21,7 +22,6 @@ class HNSWServer:
         self.request_queue.put((node_id, level))
         return self.response_queue.get()
 
-    
     def shutdown(self):
         self.request_queue.put("STOP")
         self.process.join()

@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-import redis
 
 class ScoredSet(ABC):
     @abstractmethod
@@ -15,9 +14,11 @@ class ScoredSet(ABC):
         pass
 
 class RedisScoredSet(ScoredSet):
-    def __init__(self, redis_host='localhost', redis_port=6379, scored_name='scored'):
-        self.r = redis.StrictRedis(host=redis_host, port=redis_port, decode_responses=True)
-        
+    def __init__(self, redis_client=None, scored_name='scored'):
+        if redis_client is None:
+            raise ValueError("RedisScoredSet requires a valud Redis client instance.")
+
+        self.r = redis_client
         self.scored_list = f"{scored_name}:list"
         self.scored_set = f"{scored_name}:set"
 
@@ -31,9 +32,12 @@ class RedisScoredSet(ScoredSet):
 
     def save(self, path):
         with open(path, "w") as f:
-            for key in self.r.lrange(self.scored_list, 0, -1):
-                score = self.getScore(key)
+            for key, score in self:
                 f.write(f"{key} {score}\n")
+
+    def __iter__(self):
+        for key in self.r.lrange(self.scored_list, 0, -1):
+            yield (key, self.getScore(key))
 
     def __len__(self):
         return self.r.llen(self.scored_list)
