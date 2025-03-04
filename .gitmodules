@@ -1,0 +1,3 @@
+[submodule "usearch"]
+	path = usearch
+	url = https://github.com/bwhall61/usearch
