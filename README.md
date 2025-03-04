@@ -2,6 +2,7 @@
 
 ## Requirements
 Redis
+
 Python >=3.11
 
 ## Installation
