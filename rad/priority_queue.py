@@ -11,7 +11,7 @@ class PriorityQueue(ABC):
         pass
 
 class RedisPQ(PriorityQueue):
-    def __init__(self, redis_client=None, queue_name='pq'):
+    def __init__(self, redis_client=None, queue_name='pq', **kwargs):
         if redis_client is None:
             raise ValueError("RedisScoredSet requires a valud Redis client instance.")
 
