@@ -6,7 +6,7 @@ class VisitedSet(ABC):
         pass
 
 class RedisVisited(VisitedSet):
-    def __init__(self, redis_client=None, visited_name='visited'):
+    def __init__(self, redis_client=None, visited_name='visited', **kwargs):
         if redis_client is None:
             raise ValueError("RedisScoredSet requires a valud Redis client instance.")
 
