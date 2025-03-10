@@ -14,7 +14,7 @@ class ScoredSet(ABC):
         pass
 
 class RedisScoredSet(ScoredSet):
-    def __init__(self, redis_client=None, scored_name='scored'):
+    def __init__(self, redis_client=None, scored_name='scored', **kwargs):
         if redis_client is None:
             raise ValueError("RedisScoredSet requires a valud Redis client instance.")
 
