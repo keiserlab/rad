@@ -118,17 +118,20 @@ class RADTraverser:
                  n_workers: int,
                  **kwargs):
 
-        processes = []
-        for _ in range(n_workers):
-            p = multiprocessing.Process(
-                target=self._traverse,
-                args=(self.hnsw_server, self.scoring_fn, self.priority_queue, self.visited_set, self.scored_set),
-                kwargs=kwargs)
-            p.start()
-            processes.append(p)
+        if n_workers == 1:
+            self._traverse(self.hnsw_server, self.scoring_fn, self.priority_queue, self.visited_set, self.scored_set, **kwargs)
+        else:
+            processes = []
+            for _ in range(n_workers):
+                p = multiprocessing.Process(
+                    target=self._traverse,
+                    args=(self.hnsw_server, self.scoring_fn, self.priority_queue, self.visited_set, self.scored_set),
+                    kwargs=kwargs)
+                p.start()
+                processes.append(p)
 
-        for p in processes:
-            p.join()
+            for p in processes:
+                p.join()
 
     # TODO: multiprocess the beginning scoring
     def prime(self, **kwargs):
