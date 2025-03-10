@@ -105,7 +105,7 @@ class RADTraverser:
                 if score is None:
                     score = scoring_fn(neighbor_key, **kwargs)
                     scored_set.insert(key=neighbor_key, score=score)
-                    if n_to_score is not None and len(scored_set) > n_to_score:
+                    if n_to_score is not None and len(scored_set) >= n_to_score:
                         print("Scored desired number of nodes")
                         return
                 # Insert the neighbor into the queue
