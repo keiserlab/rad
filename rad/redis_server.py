@@ -11,7 +11,7 @@ class RedisServer:
         self.process = multiprocessing.Process(target=self._start_redis, daemon=True)
         self.process.start()
 
-        self.client = redis.StrictRedis(host='localhost', port=self.redis_port, decode_responses=True)
+        self.client = redis.StrictRedis(host='localhost', port=self.redis_port, decode_responses=False)
 
         self._wait_for_startup(**kwargs)
 

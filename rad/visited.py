@@ -2,13 +2,13 @@ from abc import ABC, abstractmethod
 
 class VisitedSet(ABC):
     @abstractmethod
-    def checkAndInsert(self, node_id: int) -> bool:
+    def checkAndInsert(self, node_id: int, level: int) -> bool:
         pass
 
 class RedisVisited(VisitedSet):
     def __init__(self, redis_client=None, visited_name='visited', **kwargs):
         if redis_client is None:
-            raise ValueError("RedisScoredSet requires a valud Redis client instance.")
+            raise ValueError("RedisVisited requires a valid Redis client instance.")
 
         self.r = redis_client
         self.visited_name = visited_name

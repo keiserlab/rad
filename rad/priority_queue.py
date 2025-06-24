@@ -13,7 +13,7 @@ class PriorityQueue(ABC):
 class RedisPQ(PriorityQueue):
     def __init__(self, redis_client=None, queue_name='pq', **kwargs):
         if redis_client is None:
-            raise ValueError("RedisScoredSet requires a valud Redis client instance.")
+            raise ValueError("RedisPQ requires a valid Redis client instance.")
 
         self.r = redis_client
         self.queue_name = queue_name
@@ -32,6 +32,9 @@ class RedisPQ(PriorityQueue):
         if not result:
             return None
         composite_key, score = result
+        # Decode bytes to string if necessary
+        if isinstance(composite_key, bytes):
+            composite_key = composite_key.decode('utf-8')
         node_id, level = map(int, composite_key.split(":"))
         return node_id, level, float(score)
     
