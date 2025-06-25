@@ -104,9 +104,10 @@ class RADTraverser:
             if not self.hnsw_service.is_healthy():
                 raise RuntimeError("Provided HNSW service is not healthy")
             
-            # Initialize coordination service
+            # Initialize coordination service with HNSW service for proxy mode
             self.coordination_service = create_coordination_service(
                 self.redis_client,
+                self.hnsw_service,
                 namespace=self.namespace,
                 **kwargs
             )
@@ -203,7 +204,6 @@ class RADTraverser:
                 # Single worker mode
                 worker = DistributedWorker(
                     worker_id=f"{self.namespace}_worker_0",
-                    hnsw_service=self.hnsw_service,
                     coordination_service=self.coordination_service,
                     scoring_fn=self.scoring_fn,
                     **kwargs
@@ -218,7 +218,6 @@ class RADTraverser:
                 # Multi-worker mode using worker pool
                 worker_config = {
                     'worker_id_prefix': f"{self.namespace}_worker",
-                    'hnsw_service': self.hnsw_service,
                     'coordination_service': self.coordination_service,
                     'scoring_fn': self.scoring_fn,
                     **kwargs

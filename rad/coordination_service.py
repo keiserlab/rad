@@ -35,11 +35,12 @@ class WorkItem:
     """Represents a work item for RAD traversal."""
     
     def __init__(self, node_id: int, level: int, score: float, 
-                 request_id: Optional[str] = None):
+                 request_id: Optional[str] = None, neighbors: Optional[List] = None):
         self.node_id = node_id
         self.level = level
         self.score = score
         self.request_id = request_id or str(uuid.uuid4())
+        self.neighbors = neighbors  # Pre-fetched neighbors from HNSW service
         self.created_at = time.time()
         self.assigned_at = None
         self.assigned_to = None
@@ -51,6 +52,7 @@ class WorkItem:
             'level': self.level,
             'score': self.score,
             'request_id': self.request_id,
+            'neighbors': self.neighbors,
             'created_at': self.created_at,
             'assigned_at': self.assigned_at,
             'assigned_to': self.assigned_to
@@ -63,7 +65,8 @@ class WorkItem:
             node_id=data['node_id'],
             level=data['level'], 
             score=data['score'],
-            request_id=data['request_id']
+            request_id=data['request_id'],
+            neighbors=data.get('neighbors')
         )
         item.created_at = data['created_at']
         item.assigned_at = data.get('assigned_at')
@@ -112,19 +115,22 @@ class CoordinationService:
     """
     
     def __init__(self, redis_client: redis.Redis, 
+                 hnsw_service,
                  namespace: str = "rad_coordination",
                  worker_timeout: float = 60.0,
                  heartbeat_interval: float = 10.0):
         """
-        Initialize coordination service.
+        Initialize coordination service with HNSW proxy capability.
         
         Args:
             redis_client: Redis client for state management
+            hnsw_service: HNSW service for neighbor queries (required for proxy mode)
             namespace: Redis key namespace for this coordination instance
             worker_timeout: Time before considering worker dead (seconds)
             heartbeat_interval: Expected heartbeat interval from workers
         """
         self.redis = redis_client
+        self.hnsw_service = hnsw_service
         self.namespace = namespace
         self.worker_timeout = worker_timeout
         self.heartbeat_interval = heartbeat_interval
@@ -133,6 +139,10 @@ class CoordinationService:
         self.coordination_id = str(uuid.uuid4())
         self.started_at = time.time()
         self.is_running = False
+        
+        # HNSW proxy statistics
+        self.total_neighbor_queries = 0
+        self.total_neighbor_time = 0.0
         
         # Worker management
         self.workers: Dict[str, WorkerInfo] = {}
@@ -278,13 +288,13 @@ class CoordinationService:
     
     def request_work(self, worker_id: str) -> Optional[WorkItem]:
         """
-        Request work for a worker.
+        Request work for a worker with pre-fetched neighbors.
         
         Args:
             worker_id: ID of the worker requesting work
             
         Returns:
-            WorkItem if work available, None if no work or service terminating
+            WorkItem with neighbors if work available, None if no work or service terminating
         """
         if self.should_terminate:
             return None
@@ -299,7 +309,24 @@ class CoordinationService:
             return None
         
         node_id, level, score = work_tuple
-        work_item = WorkItem(node_id, level, score)
+        
+        # Pre-fetch neighbors from HNSW service
+        try:
+            neighbor_start = time.time()
+            neighbors = self.hnsw_service.get_neighbors(node_id, level)
+            neighbor_time = time.time() - neighbor_start
+            
+            # Update proxy statistics
+            self.total_neighbor_queries += 1
+            self.total_neighbor_time += neighbor_time
+            
+        except Exception as e:
+            logger.error(f"Failed to get neighbors for node {node_id} at level {level}: {e}")
+            # Put work back in queue
+            self.priority_queue.insert(node_id, level, score)
+            return None
+        
+        work_item = WorkItem(node_id, level, score, neighbors=neighbors)
         work_item.assigned_at = time.time()
         work_item.assigned_to = worker_id
         
@@ -314,7 +341,8 @@ class CoordinationService:
             json.dumps(work_item.to_dict())
         )
         
-        logger.debug(f"Assigned work {work_item.request_id} to worker {worker_id}")
+        logger.debug(f"Assigned work {work_item.request_id} with {len(neighbors) // 2} neighbors to worker {worker_id} "
+                    f"(neighbor query: {neighbor_time:.3f}s)")
         return work_item
     
     def submit_work_results(self, worker_id: str, work_item: WorkItem,
@@ -470,6 +498,13 @@ class CoordinationService:
             'total_errors': sum(w.error_count for w in self.workers.values())
         }
         
+        # HNSW proxy statistics
+        proxy_stats = {
+            'total_neighbor_queries': self.total_neighbor_queries,
+            'total_neighbor_time': self.total_neighbor_time,
+            'avg_neighbor_time': self.total_neighbor_time / max(self.total_neighbor_queries, 1)
+        }
+        
         return {
             'coordination_id': self.coordination_id,
             'runtime_seconds': runtime,
@@ -479,6 +514,7 @@ class CoordinationService:
             'scored_molecules': len(self.scored_set),
             'pending_work': self.priority_queue.r.zcard(self.priority_queue.queue_name),
             'workers': worker_stats,
+            'hnsw_proxy': proxy_stats,
             'termination_conditions': self.termination_conditions
         }
     
@@ -568,15 +604,16 @@ class CoordinationService:
                     logger.info(f"Reassigned work {request_id} from dead worker {worker_id}")
 
 
-def create_coordination_service(redis_client: redis.Redis, **kwargs) -> CoordinationService:
+def create_coordination_service(redis_client: redis.Redis, hnsw_service, **kwargs) -> CoordinationService:
     """
     Convenience function to create a coordination service.
     
     Args:
         redis_client: Redis client for state management
+        hnsw_service: HNSW service for neighbor queries
         **kwargs: Additional arguments for CoordinationService
         
     Returns:
         Configured CoordinationService instance
     """
-    return CoordinationService(redis_client, **kwargs)
+    return CoordinationService(redis_client, hnsw_service, **kwargs)

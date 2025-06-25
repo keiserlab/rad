@@ -16,14 +16,14 @@ from usearch.index import Index
 import pytest
 
 def create_test_database(db_path: str, n_nodes: int = 100):
-    """Create a test SQLite database with node_id -> SMILES mapping."""
+    """Create a test SQLite database with node_key -> SMILES mapping."""
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
     # Create nodes table
     cursor.execute("""
         CREATE TABLE nodes (
-            node_id INTEGER PRIMARY KEY,
+            node_key INTEGER PRIMARY KEY,
             smi TEXT NOT NULL
         )
     """)
@@ -43,10 +43,10 @@ def create_test_database(db_path: str, n_nodes: int = 100):
         # Add some variation
         if i > 0:
             smiles = f"{smiles}.{i}"  # Simple variation for testing
-        cursor.execute("INSERT INTO nodes (node_id, smi) VALUES (?, ?)", (i, smiles))
+        cursor.execute("INSERT INTO nodes (node_key, smi) VALUES (?, ?)", (i, smiles))
     
     # Create index for performance
-    cursor.execute("CREATE INDEX idx_nodes_node_id ON nodes(node_id)")
+    cursor.execute("CREATE INDEX idx_nodes_node_key ON nodes(node_key)")
     
     conn.commit()
     conn.close()
@@ -88,14 +88,14 @@ def test_database_creation():
         count = cursor.fetchone()[0]
         assert count == 50
         
-        cursor.execute("SELECT node_id, smi FROM nodes WHERE node_id < 5")
+        cursor.execute("SELECT node_key, smi FROM nodes WHERE node_key < 5")
         results = cursor.fetchall()
         assert len(results) == 5
         
         # Check first few SMILES
         expected_smiles = ["CCO", "CCC.1", "CC(C)C.2", "c1ccccc1.3", "CC(=O)O.4"]
-        for (node_id, smi), expected in zip(results, expected_smiles):
-            assert smi == expected, f"Expected {expected}, got {smi} for node_id {node_id}"
+        for (node_key, smi), expected in zip(results, expected_smiles):
+            assert smi == expected, f"Expected {expected}, got {smi} for node_key {node_key}"
         
         conn.close()
         print("✓ Database creation test passed")

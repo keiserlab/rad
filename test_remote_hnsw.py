@@ -237,17 +237,10 @@ def test_end_to_end_traversal():
         # Create traverser with remote HNSW service
         print("  Creating traverser with remote HNSW service...")
         
-        # We need to create a mock HNSW for the traverser interface
-        # In practice, this would be handled differently for remote deployment
-        hnsw = create_test_hnsw()
-        
         traverser = RADTraverser(
-            hnsw=hnsw,
+            hnsw_service=remote_hnsw_service,
             scoring_fn=scoring_fn
         )
-        
-        # Replace the HNSW service with our remote one
-        traverser.hnsw_service = remote_hnsw_service
         
         print("  Running traversal...")
         traverser.prime()

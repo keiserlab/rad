@@ -43,7 +43,6 @@ class DistributedWorker:
     """
     
     def __init__(self, worker_id: Optional[str] = None,
-                 hnsw_service: Optional[HNSWService] = None,
                  coordination_service: Optional[CoordinationService] = None,
                  scoring_fn: Optional[Callable] = None,
                  worker_type: str = "default",
@@ -52,12 +51,11 @@ class DistributedWorker:
                  work_timeout: float = 30.0,
                  max_retries: int = 3):
         """
-        Initialize distributed worker.
+        Initialize distributed worker for proxy mode (no direct HNSW access).
         
         Args:
             worker_id: Unique worker identifier (auto-generated if None)
-            hnsw_service: HNSW service for neighbor queries
-            coordination_service: Coordination service for work management
+            coordination_service: Coordination service for work management and neighbor proxy
             scoring_fn: Function to score molecules
             worker_type: Type of worker for load balancing
             capabilities: Worker capabilities and configuration
@@ -73,7 +71,6 @@ class DistributedWorker:
         self.max_retries = max_retries
         
         # Services
-        self.hnsw_service = hnsw_service
         self.coordination_service = coordination_service
         self.scoring_fn = scoring_fn
         
@@ -87,7 +84,6 @@ class DistributedWorker:
         self.work_completed = 0
         self.work_failed = 0
         self.total_score_time = 0.0
-        self.total_neighbor_time = 0.0
         self.errors = []
         
         # Threading
@@ -101,39 +97,18 @@ class DistributedWorker:
         
         logger.info(f"DistributedWorker initialized: {self.worker_id}")
     
-    def connect_services(self, hnsw_service_name: Optional[str] = None,
-                        hnsw_service: Optional[HNSWService] = None,
-                        coordination_service: Optional[CoordinationService] = None) -> bool:
+    def connect_services(self, coordination_service: Optional[CoordinationService] = None, **kwargs) -> bool:
         """
-        Connect to HNSW and coordination services.
+        Connect to coordination service (HNSW access via coordination service proxy).
         
         Args:
-            hnsw_service_name: Name of HNSW service in registry
-            hnsw_service: Direct HNSW service instance
             coordination_service: Coordination service instance
+            **kwargs: Ignored (for backward compatibility)
             
         Returns:
-            True if all services connected successfully
+            True if coordination service connected successfully
         """
         try:
-            # Connect to HNSW service
-            if hnsw_service:
-                self.hnsw_service = hnsw_service
-            elif hnsw_service_name:
-                self.hnsw_service = service_registry.get_service(hnsw_service_name)
-            elif not self.hnsw_service:
-                # Try to get default service
-                self.hnsw_service = service_registry.get_service()
-            
-            if not self.hnsw_service:
-                logger.error("No HNSW service available")
-                return False
-            
-            # Test HNSW service
-            if not self.hnsw_service.is_healthy():
-                logger.error("HNSW service is not healthy")
-                return False
-            
             # Connect to coordination service
             if coordination_service:
                 self.coordination_service = coordination_service
@@ -142,11 +117,11 @@ class DistributedWorker:
                 logger.error("No coordination service provided")
                 return False
             
-            logger.info(f"Worker {self.worker_id} connected to services")
+            logger.info(f"Worker {self.worker_id} connected to coordination service (proxy mode)")
             return True
             
         except Exception as e:
-            logger.error(f"Error connecting to services: {e}")
+            logger.error(f"Error connecting to coordination service: {e}")
             return False
     
     def start(self, register_worker: bool = True) -> bool:
@@ -163,8 +138,8 @@ class DistributedWorker:
             logger.warning(f"Worker {self.worker_id} is already running")
             return False
         
-        if not self.hnsw_service or not self.coordination_service:
-            logger.error("Services not connected. Call connect_services() first.")
+        if not self.coordination_service:
+            logger.error("Coordination service not connected.")
             return False
         
         if not self.scoring_fn:
@@ -246,7 +221,6 @@ class DistributedWorker:
             'work_failed': self.work_failed,
             'success_rate': self.work_completed / max(self.work_completed + self.work_failed, 1),
             'avg_score_time': self.total_score_time / max(self.work_completed, 1),
-            'avg_neighbor_time': self.total_neighbor_time / max(self.work_completed, 1),
             'last_work_at': self.last_work_at,
             'error_count': len(self.errors),
             'recent_errors': self.errors[-5:] if self.errors else []
@@ -297,10 +271,10 @@ class DistributedWorker:
     
     def _process_work_item(self, work_item: WorkItem) -> bool:
         """
-        Process a single work item.
+        Process a single work item using pre-fetched neighbors.
         
         Args:
-            work_item: Work item to process
+            work_item: Work item with pre-fetched neighbors to process
             
         Returns:
             True if processed successfully
@@ -308,10 +282,12 @@ class DistributedWorker:
         try:
             start_time = time.time()
             
-            # Get neighbors from HNSW service
-            neighbor_start = time.time()
-            neighbors = self.hnsw_service.get_neighbors(work_item.node_id, work_item.level)
-            neighbor_time = time.time() - neighbor_start
+            # Use pre-fetched neighbors from work item
+            if not work_item.neighbors:
+                logger.error(f"Work item {work_item.request_id} has no neighbors - coordination service error")
+                return False
+            
+            neighbors = work_item.neighbors
             
             # Score the neighbors
             score_start = time.time()
@@ -341,12 +317,11 @@ class DistributedWorker:
             if success:
                 # Update timing statistics
                 with self.worker_lock:
-                    self.total_neighbor_time += neighbor_time
                     self.total_score_time += score_time
                 
                 total_time = time.time() - start_time
                 logger.debug(f"Processed work {work_item.request_id} in {total_time:.3f}s "
-                           f"(neighbors: {neighbor_time:.3f}s, scoring: {score_time:.3f}s)")
+                           f"(scoring: {score_time:.3f}s)")
                 return True
             else:
                 logger.error(f"Failed to submit results for work {work_item.request_id}")

@@ -21,7 +21,7 @@ def create_test_database(db_path: str, n_nodes: int = 30):
     # Create nodes table
     cursor.execute("""
         CREATE TABLE nodes (
-            node_id INTEGER PRIMARY KEY,
+            node_key INTEGER PRIMARY KEY,
             smi TEXT NOT NULL
         )
     """)
@@ -53,9 +53,9 @@ def create_test_database(db_path: str, n_nodes: int = 30):
     for i in range(n_nodes):
         # Cycle through realistic SMILES
         smiles = realistic_smiles[i % len(realistic_smiles)]
-        cursor.execute("INSERT INTO nodes (node_id, smi) VALUES (?, ?)", (i, smiles))
+        cursor.execute("INSERT INTO nodes (node_key, smi) VALUES (?, ?)", (i, smiles))
     
-    cursor.execute("CREATE INDEX idx_nodes_node_id ON nodes(node_id)")
+    cursor.execute("CREATE INDEX idx_nodes_node_key ON nodes(node_key)")
     conn.commit()
     conn.close()
     print(f"Created test database with {n_nodes} realistic SMILES molecules")

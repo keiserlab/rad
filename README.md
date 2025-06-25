@@ -22,8 +22,10 @@ We also provide a Dockerfile containing all required software.
 RAD uses a service-oriented design with three main components:
 
 1. **HNSW Service**: Handles HNSW neighbor searches and SMILES lookup
-2. **Coordination Service**: Manages work distribution and state via Redis
-3. **Distributed Workers**: Lightweight scoring processes that can run anywhere
+2. **Coordination Service**: Manages work distribution, acts as HNSW proxy, and maintains state via Redis
+3. **Distributed Workers**: Lightweight scoring processes that can run anywhere with only Redis access
+
+
 
 ## Running RAD
 
