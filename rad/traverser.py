@@ -44,6 +44,7 @@ class RADTraverser:
                  deployment_mode: str = "local",
                  redis_host: Optional[str] = None,
                  redis_port: int = 6379,
+                 redis_password: Optional[str] = None,
                  namespace: Optional[str] = None,
                  **kwargs):
         """
@@ -55,6 +56,7 @@ class RADTraverser:
             deployment_mode: "local", "distributed", or "hybrid"
             redis_host: Redis host (None for local Redis)
             redis_port: Redis port
+            redis_password: Redis password (None for no authentication)
             namespace: Namespace for this traversal session
             **kwargs: Additional configuration options
         """
@@ -77,24 +79,28 @@ class RADTraverser:
         self.is_running = False
         
         # Initialize services based on deployment mode
-        self._init_services(redis_host, redis_port, **kwargs)
+        self._init_services(redis_host, redis_port, redis_password, **kwargs)
         
         logger.info(f"RADTraverser initialized in {deployment_mode} mode")
     
-    def _init_services(self, redis_host: Optional[str], redis_port: int, **kwargs):
+    def _init_services(self, redis_host: Optional[str], redis_port: int, redis_password: Optional[str], **kwargs):
         """Initialize services based on deployment mode."""
         try:
             # Initialize Redis client
             if redis_host is not None:
                 logger.info(f'Connecting to established redis server at {redis_host}:{redis_port}')
-                self.redis_client = redis.StrictRedis(
-                    host=redis_host, 
-                    port=redis_port,
-                    decode_responses=False
-                )
+                connection_params = {
+                    'host': redis_host,
+                    'port': redis_port,
+                    'decode_responses': False
+                }
+                if redis_password is not None:
+                    connection_params['password'] = redis_password
+                
+                self.redis_client = redis.StrictRedis(**connection_params)
             else:
                 logger.info(f'Starting local redis server on port {redis_port}')
-                self.redis_server = RedisServer(redis_port=redis_port, **kwargs)
+                self.redis_server = RedisServer(redis_port=redis_port, password=redis_password, **kwargs)
                 self.redis_client = self.redis_server.getClient()
             
             # Test Redis connection
@@ -389,7 +395,7 @@ def create_local_traverser(hnsw, scoring_fn, **kwargs) -> RADTraverser:
     )
 
 def create_distributed_traverser(hnsw, scoring_fn, redis_host: str, 
-                               redis_port: int = 6379, **kwargs) -> RADTraverser:
+                               redis_port: int = 6379, redis_password: Optional[str] = None, **kwargs) -> RADTraverser:
     """Create a traverser configured for distributed deployment."""
     hnsw_service = create_local_hnsw_service(hnsw, **kwargs)
     return RADTraverser(
@@ -398,6 +404,7 @@ def create_distributed_traverser(hnsw, scoring_fn, redis_host: str,
         deployment_mode="distributed",
         redis_host=redis_host,
         redis_port=redis_port,
+        redis_password=redis_password,
         **kwargs
     )
 
