@@ -39,7 +39,7 @@ class RADTraverser:
     """
     
     def __init__(self, 
-                 hnsw,
+                 hnsw_service: HNSWService,
                  scoring_fn: Callable,
                  deployment_mode: str = "local",
                  redis_host: Optional[str] = None,
@@ -50,7 +50,7 @@ class RADTraverser:
         Initialize RAD traverser with scalable architecture.
         
         Args:
-            hnsw: HNSW index for neighbor queries
+            hnsw_service: HNSW service (local or remote) for neighbor queries
             scoring_fn: Function to score molecules
             deployment_mode: "local", "distributed", or "hybrid"
             redis_host: Redis host (None for local Redis)
@@ -58,13 +58,12 @@ class RADTraverser:
             namespace: Namespace for this traversal session
             **kwargs: Additional configuration options
         """
-        self.hnsw = hnsw
+        self.hnsw_service = hnsw_service
         self.scoring_fn = scoring_fn
         self.deployment_mode = deployment_mode
         self.namespace = namespace or f"rad_session_{int(time.time())}"
         
-        # Service instances
-        self.hnsw_service: Optional[HNSWService] = None
+        # Service instances (hnsw_service provided via constructor)
         self.coordination_service: Optional[CoordinationService] = None
         self.redis_client: Optional[redis.Redis] = None
         self.redis_server: Optional[RedisServer] = None
@@ -101,15 +100,9 @@ class RADTraverser:
             # Test Redis connection
             self.redis_client.ping()
             
-            # Initialize HNSW service
-            if self.deployment_mode == "local":
-                self.hnsw_service = create_local_hnsw_service(self.hnsw, **kwargs)
-            elif self.deployment_mode == "distributed":
-                # For distributed mode, assume HNSW service is provided externally
-                # or we'll connect to it later
-                self.hnsw_service = LocalHNSWService(self.hnsw, **kwargs)
-            else:
-                raise ValueError(f"Unsupported deployment mode: {self.deployment_mode}")
+            # HNSW service provided via constructor - just verify it's healthy
+            if not self.hnsw_service.is_healthy():
+                raise RuntimeError("Provided HNSW service is not healthy")
             
             # Initialize coordination service
             self.coordination_service = create_coordination_service(
@@ -143,16 +136,18 @@ class RADTraverser:
             
             scored_count = 0
             for i in range(0, len(top_level_nodes), 2):
-                node_id, node_key = top_level_nodes[i], top_level_nodes[i+1]
+                node_id, node_smiles = top_level_nodes[i], top_level_nodes[i+1]
                 
-                # Score the node
-                score = self.scoring_fn(node_key, **kwargs)
+                # Score the node using SMILES
+                score = self.scoring_fn(node_smiles, **kwargs)
                 
-                # Add to scored set
-                self.coordination_service.scored_set.insert(key=node_key, score=score)
+                # Add to scored set with SMILES
+                self.coordination_service.scored_set.insert(node_id=node_id, score=score, smiles=node_smiles)
                 
                 # Mark as visited at top level
-                max_level = max(0, self.hnsw.max_level - 1)
+                # Get max level from HNSW service
+                hnsw_info = self.hnsw_service.get_hnsw_info()
+                max_level = max(0, hnsw_info.get('max_level', 1) - 1)
                 self.coordination_service.visited_set.checkAndInsert(
                     node_id=node_id, 
                     level=max_level
@@ -313,6 +308,36 @@ class RADTraverser:
         
         return stats
     
+    def get_molecules(self, n: int = None):
+        """
+        Get molecules with SMILES in traversal order for search path analysis.
+        
+        Args:
+            n: Number of molecules to return (None for all)
+            
+        Returns:
+            List of (node_id, score, smiles) tuples in traversal/insertion order
+        """
+        if not self.coordination_service:
+            return []
+        
+        return self.coordination_service.scored_set.get_molecules(n)
+    
+    def get_best_molecules(self, n: int = None):
+        """
+        Get top-scoring molecules with SMILES for results analysis.
+        
+        Args:
+            n: Number of top molecules to return (None for all)
+            
+        Returns:
+            List of (node_id, score, smiles) tuples sorted by best scores
+        """
+        if not self.coordination_service:
+            return []
+        
+        return self.coordination_service.scored_set.get_best_molecules(n)
+    
     def shutdown(self, **kwargs):
         """
         Shutdown all services and workers gracefully.
@@ -356,8 +381,9 @@ class RADTraverser:
 
 def create_local_traverser(hnsw, scoring_fn, **kwargs) -> RADTraverser:
     """Create a traverser configured for local deployment."""
+    hnsw_service = create_local_hnsw_service(hnsw, **kwargs)
     return RADTraverser(
-        hnsw=hnsw,
+        hnsw_service=hnsw_service,
         scoring_fn=scoring_fn,
         deployment_mode="local",
         **kwargs
@@ -366,11 +392,23 @@ def create_local_traverser(hnsw, scoring_fn, **kwargs) -> RADTraverser:
 def create_distributed_traverser(hnsw, scoring_fn, redis_host: str, 
                                redis_port: int = 6379, **kwargs) -> RADTraverser:
     """Create a traverser configured for distributed deployment."""
+    hnsw_service = create_local_hnsw_service(hnsw, **kwargs)
     return RADTraverser(
-        hnsw=hnsw,
+        hnsw_service=hnsw_service,
         scoring_fn=scoring_fn,
         deployment_mode="distributed",
         redis_host=redis_host,
         redis_port=redis_port,
+        **kwargs
+    )
+
+def create_remote_traverser(hnsw_service_url: str, scoring_fn, **kwargs) -> RADTraverser:
+    """Create a traverser configured for remote HNSW deployment."""
+    from .hnsw_service import create_remote_hnsw_service
+    hnsw_service = create_remote_hnsw_service(hnsw_service_url, **kwargs)
+    return RADTraverser(
+        hnsw_service=hnsw_service,
+        scoring_fn=scoring_fn,
+        deployment_mode="distributed",
         **kwargs
     )

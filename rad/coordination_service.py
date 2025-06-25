@@ -318,15 +318,15 @@ class CoordinationService:
         return work_item
     
     def submit_work_results(self, worker_id: str, work_item: WorkItem,
-                           neighbors: List[int], new_scores: Dict[int, float]) -> bool:
+                           neighbors: List, new_scores: Dict[int, tuple]) -> bool:
         """
         Submit results from completed work.
         
         Args:
             worker_id: ID of the worker submitting results
             work_item: The completed work item
-            neighbors: List of neighbor node IDs and keys
-            new_scores: Dictionary of new scores for neighbor nodes
+            neighbors: List of neighbor data in [node_id, smiles, ...] format
+            new_scores: Dictionary mapping node_id -> (score, smiles) tuples
             
         Returns:
             True if results accepted, False otherwise
@@ -338,21 +338,21 @@ class CoordinationService:
         try:
             # Process neighbors and add new work
             for i in range(0, len(neighbors), 2):
-                neighbor_id, neighbor_key = neighbors[i], neighbors[i+1]
+                neighbor_id, neighbor_smiles = neighbors[i], neighbors[i+1]
                 
                 # Check if already visited
                 if self.visited_set.checkAndInsert(neighbor_id, work_item.level):
                     continue
                 
                 # Get or calculate score
-                if neighbor_key in new_scores:
-                    score = new_scores[neighbor_key]
-                    self.scored_set.insert(neighbor_key, score)
+                if neighbor_id in new_scores:
+                    score, smiles = new_scores[neighbor_id]
+                    self.scored_set.insert(neighbor_id, score, smiles)  # Store with SMILES
                 else:
                     # Score should have been calculated by worker
-                    existing_score = self.scored_set.getScore(neighbor_key)
+                    existing_score = self.scored_set.getScore(neighbor_id)
                     if existing_score is None:
-                        logger.warning(f"No score provided for neighbor {neighbor_key}")
+                        logger.warning(f"No score provided for neighbor {neighbor_id}")
                         continue
                     score = existing_score
                 

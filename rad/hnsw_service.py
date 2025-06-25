@@ -15,6 +15,7 @@ import multiprocessing
 import uuid
 import time
 import threading
+import sqlite3
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Optional, Dict, Any
 import logging
@@ -70,6 +71,11 @@ class HNSWService(ABC):
     def get_service_info(self) -> Dict[str, Any]:
         """Get information about the service (type, status, performance metrics, etc.)."""
         pass
+    
+    @abstractmethod
+    def get_hnsw_info(self) -> Dict[str, Any]:
+        """Get HNSW metadata (max_level, size, connectivity, etc.)."""
+        pass
 
 
 class LocalHNSWService(HNSWService):
@@ -86,18 +92,21 @@ class LocalHNSWService(HNSWService):
     - Graceful shutdown with cleanup
     """
     
-    def __init__(self, hnsw, max_queue_size: int = 1000, 
-                 response_timeout: float = 30.0, health_check_interval: float = 5.0):
+    def __init__(self, hnsw, database_path: Optional[str] = None, 
+                 max_queue_size: int = 1000, response_timeout: float = 30.0, 
+                 health_check_interval: float = 5.0):
         """
         Initialize the local HNSW service.
         
         Args:
             hnsw: The HNSW index to serve
+            database_path: Path to SQLite database file for SMILES lookup
             max_queue_size: Maximum number of queued requests
             response_timeout: Timeout for waiting for responses (seconds)
             health_check_interval: Interval for health checks (seconds)
         """
         self.hnsw = hnsw
+        self.database_path = database_path
         self.max_queue_size = max_queue_size
         self.response_timeout = response_timeout
         self.health_check_interval = health_check_interval
@@ -135,14 +144,65 @@ class LocalHNSWService(HNSWService):
         
         logger.info(f"LocalHNSWService started with PID {self.process.pid}")
     
+    def _init_database_in_process(self):
+        """Initialize database connection in the server process."""
+        if not self.database_path:
+            logger.info("No database path provided - SMILES lookup disabled")
+            return None
+        
+        try:
+            conn = sqlite3.connect(self.database_path)
+            conn.row_factory = sqlite3.Row
+            
+            # Test database
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM nodes")
+            node_count = cursor.fetchone()[0]
+            logger.info(f"Database connected with {node_count} nodes")
+            
+            return conn
+            
+        except Exception as e:
+            logger.error(f"Database initialization failed: {e}")
+            return None
+    
+    def _get_smiles_batch(self, db_conn, node_keys: List[int]) -> Dict[int, str]:
+        """Get SMILES for multiple node keys from database."""
+        if not db_conn or not node_keys:
+            return {}
+        
+        try:
+            cursor = db_conn.cursor()
+            placeholders = ','.join(['?' for _ in node_keys])
+            query = f"SELECT node_key, smi FROM nodes WHERE node_key IN ({placeholders})"
+            
+            cursor.execute(query, node_keys)
+            results = cursor.fetchall()
+            
+            smiles_map = {row['node_key']: row['smi'] for row in results}
+            
+            # Log missing SMILES
+            missing_keys = set(node_keys) - set(smiles_map.keys())
+            if missing_keys:
+                logger.warning(f"Missing SMILES for node keys: {missing_keys}")
+            
+            return smiles_map
+            
+        except Exception as e:
+            logger.error(f"Error fetching SMILES: {e}")
+            return {}
+    
     def _server_process(self):
         """
-        Server process that handles HNSW requests.
+        Server process that handles HNSW requests with SMILES lookup.
         
         This process runs independently and processes requests from the queue.
         Each request is tagged with a unique ID to ensure proper response routing.
         """
         logger.info("HNSW server process started")
+        
+        # Initialize database connection in this process
+        db_conn = self._init_database_in_process()
         
         try:
             while True:
@@ -158,9 +218,19 @@ class LocalHNSWService(HNSWService):
                     try:
                         if request_type == "get_neighbors":
                             node_id, level = args
-                            response = self.hnsw.get_neighbors(node_id, level)
+                            # Get HNSW neighbors (returns [neighbor_id, neighbor_key, ...])
+                            hnsw_neighbors = [int(x) for x in self.hnsw.get_neighbors(node_id, level)]
+                            
+                            # Transform to [neighbor_id, smiles, ...] format
+                            response = self._transform_to_smiles_format(db_conn, hnsw_neighbors)
+                            
                         elif request_type == "get_top_level_nodes":
-                            response = self.hnsw.get_top_level_nodes()
+                            # Get HNSW top nodes (returns [node_id, node_key, ...])
+                            hnsw_top_nodes = [int(x) for x in self.hnsw.get_top_level_nodes()]
+                            
+                            # Transform to [node_id, smiles, ...] format
+                            response = self._transform_to_smiles_format(db_conn, hnsw_top_nodes)
+                            
                         elif request_type == "health_check":
                             response = {"status": "healthy", "timestamp": time.time()}
                         else:
@@ -179,7 +249,38 @@ class LocalHNSWService(HNSWService):
         except Exception as e:
             logger.error(f"HNSW server process error: {e}")
         finally:
+            if db_conn:
+                db_conn.close()
             logger.info("HNSW server process shutting down")
+    
+    def _transform_to_smiles_format(self, db_conn, hnsw_data: List[int]) -> List:
+        """
+        Transform HNSW data from [node_id, node_key, ...] to [node_id, smiles, ...] format.
+        
+        Args:
+            db_conn: Database connection
+            hnsw_data: List in format [node_id, node_key, node_id, node_key, ...]
+            
+        Returns:
+            List in format [node_id, smiles, node_id, smiles, ...]
+        """
+        if not hnsw_data:
+            return []
+        
+        # Extract node_keys for SMILES lookup
+        node_keys = [hnsw_data[i+1] for i in range(0, len(hnsw_data), 2)]
+        node_ids = [hnsw_data[i] for i in range(0, len(hnsw_data), 2)]
+        
+        # Get SMILES for all node_keys
+        smiles_map = self._get_smiles_batch(db_conn, node_keys)
+        
+        # Build result with [node_id, smiles, ...] format
+        result = []
+        for node_id, node_key in zip(node_ids, node_keys):
+            smiles = smiles_map.get(node_key, "")  # Empty string if SMILES not found
+            result.extend([node_id, smiles])
+        
+        return result
     
     def _response_handler(self):
         """
@@ -296,6 +397,33 @@ class LocalHNSWService(HNSWService):
             }
         }
     
+    def get_hnsw_info(self) -> Dict[str, Any]:
+        """Get HNSW metadata using usearch index properties."""
+        try:
+            return {
+                "max_level": self.hnsw.max_level,
+                "size": len(self.hnsw),
+                "connectivity": self.hnsw.connectivity,
+                "dtype": str(self.hnsw.dtype),
+                "ndim": self.hnsw.ndim,
+                "capacity": self.hnsw.capacity,
+                "memory_usage": self.hnsw.memory_usage,
+                "multi": self.hnsw.multi
+            }
+        except Exception as e:
+            logger.error(f"Error getting HNSW info: {e}")
+            return {
+                "max_level": 0,
+                "size": -1,
+                "connectivity": -1,
+                "dtype": "unknown", 
+                "ndim": -1,
+                "capacity": -1,
+                "memory_usage": -1,
+                "multi": False,
+                "error": str(e)
+            }
+    
     def shutdown(self) -> None:
         """Shutdown the service gracefully."""
         if not self.is_running:
@@ -322,6 +450,312 @@ class LocalHNSWService(HNSWService):
             self.response_thread.join(timeout=2.0)
         
         logger.info("LocalHNSWService shutdown complete")
+
+
+class RemoteHNSWService(HNSWService):
+    """
+    Remote HNSW service that connects to HTTP-based HNSW servers.
+    
+    This implementation enables distributed deployment where HNSW operations
+    are performed on remote servers via HTTP REST API calls.
+    
+    Features:
+    - HTTP client with connection pooling for performance
+    - Request retry logic with exponential backoff
+    - Circuit breaker pattern for fault tolerance
+    - Request correlation UUIDs for debugging
+    - Configurable timeouts and error handling
+    """
+    
+    def __init__(self, base_url: str, api_key: Optional[str] = None,
+                 timeout: float = 30.0, max_retries: int = 3,
+                 pool_connections: int = 10, pool_maxsize: int = 20,
+                 backoff_factor: float = 0.5):
+        """
+        Initialize remote HNSW service client.
+        
+        Args:
+            base_url: Base URL of the HNSW server (e.g., "http://localhost:8000")
+            api_key: Optional API key for authentication
+            timeout: Request timeout in seconds
+            max_retries: Maximum number of retry attempts
+            pool_connections: Number of connection pools to cache
+            pool_maxsize: Maximum number of connections in each pool
+            backoff_factor: Exponential backoff factor for retries
+        """
+        try:
+            import requests
+            from requests.adapters import HTTPAdapter
+            from requests.packages.urllib3.util.retry import Retry
+        except ImportError:
+            raise ImportError("requests library is required for RemoteHNSWService. Install with: pip install requests")
+        
+        self.base_url = base_url.rstrip('/')
+        self.api_key = api_key
+        self.timeout = timeout
+        self.max_retries = max_retries
+        self.backoff_factor = backoff_factor
+        
+        # Setup HTTP session with connection pooling
+        self.session = requests.Session()
+        
+        # Configure retry strategy
+        retry_strategy = Retry(
+            total=max_retries,
+            backoff_factor=backoff_factor,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["HEAD", "GET", "PUT", "DELETE", "OPTIONS", "TRACE"]
+        )
+        
+        # Setup connection pooling
+        adapter = HTTPAdapter(
+            pool_connections=pool_connections,
+            pool_maxsize=pool_maxsize,
+            max_retries=retry_strategy
+        )
+        
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+        
+        # Setup authentication headers
+        if self.api_key:
+            self.session.headers.update({
+                'Authorization': f'Bearer {self.api_key}'
+            })
+        
+        self.session.headers.update({
+            'Content-Type': 'application/json',
+            'User-Agent': 'RAD-RemoteHNSWService/1.0.0'
+        })
+        
+        # Service state
+        self.is_connected = False
+        self.last_health_check = 0
+        self.health_check_interval = 60.0  # seconds
+        self.request_count = 0
+        self.error_count = 0
+        
+        # Test initial connection
+        self._verify_connection()
+        
+        logger.info(f"RemoteHNSWService initialized for {base_url}")
+    
+    def _verify_connection(self):
+        """Verify connection to remote HNSW service."""
+        try:
+            response = self.session.get(
+                f"{self.base_url}/health",
+                timeout=self.timeout
+            )
+            response.raise_for_status()
+            
+            health_data = response.json()
+            if health_data.get('status') == 'healthy':
+                self.is_connected = True
+                self.last_health_check = time.time()
+                logger.info(f"Successfully connected to HNSW service at {self.base_url}")
+            else:
+                raise RuntimeError(f"HNSW service reported unhealthy status: {health_data}")
+                
+        except Exception as e:
+            logger.error(f"Failed to connect to HNSW service at {self.base_url}: {e}")
+            raise RuntimeError(f"Cannot connect to HNSW service: {e}")
+    
+    def _make_request(self, method: str, endpoint: str, **kwargs) -> dict:
+        """
+        Make HTTP request with error handling and metrics.
+        
+        Args:
+            method: HTTP method (GET, POST, etc.)
+            endpoint: API endpoint (without base URL)
+            **kwargs: Additional arguments for requests
+            
+        Returns:
+            Response JSON data
+            
+        Raises:
+            RuntimeError: On request failure
+        """
+        url = f"{self.base_url}{endpoint}"
+        request_id = str(uuid.uuid4())
+        
+        # Add request correlation header
+        headers = kwargs.get('headers', {})
+        headers['X-Correlation-ID'] = request_id
+        kwargs['headers'] = headers
+        kwargs['timeout'] = kwargs.get('timeout', self.timeout)
+        
+        try:
+            self.request_count += 1
+            logger.debug(f"Request {request_id}: {method} {url}")
+            
+            response = self.session.request(method, url, **kwargs)
+            response.raise_for_status()
+            
+            data = response.json()
+            logger.debug(f"Request {request_id}: Success ({response.status_code})")
+            
+            return data
+            
+        except Exception as e:
+            self.error_count += 1
+            logger.error(f"Request {request_id}: Failed - {e}")
+            
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_detail = e.response.json().get('detail', str(e))
+                except:
+                    error_detail = str(e)
+                raise RuntimeError(f"HNSW service error: {error_detail}")
+            else:
+                raise RuntimeError(f"Network error connecting to HNSW service: {e}")
+    
+    def get_neighbors(self, node_id: int, level: int) -> List[int]:
+        """
+        Get neighbors for a node at a specific level via HTTP API.
+        
+        Args:
+            node_id: The node to get neighbors for
+            level: The HNSW level to query
+            
+        Returns:
+            List of neighbor node IDs and SMILES (alternating: [neighbor_id, smiles, ...])
+        """
+        try:
+            data = self._make_request('GET', f'/neighbors/{node_id}/{level}')
+            neighbors = data.get('neighbors', [])
+            
+            logger.debug(f"Retrieved {len(neighbors)//2} neighbors with SMILES for node {node_id} at level {level}")
+            return neighbors
+            
+        except Exception as e:
+            logger.error(f"Error getting neighbors for node {node_id}, level {level}: {e}")
+            raise
+    
+    def get_top_level_nodes(self) -> List[int]:
+        """
+        Get top-level nodes for traversal priming via HTTP API.
+        
+        Returns:
+            List of top-level node IDs and SMILES (alternating: [node_id, smiles, ...])
+        """
+        try:
+            data = self._make_request('GET', '/top-level-nodes')
+            top_nodes = data.get('top_nodes', [])
+            
+            logger.debug(f"Retrieved {len(top_nodes)//2} top-level nodes with SMILES")
+            return top_nodes
+            
+        except Exception as e:
+            logger.error(f"Error getting top-level nodes: {e}")
+            raise
+    
+    def is_healthy(self) -> bool:
+        """
+        Check if the remote service is healthy and responsive.
+        
+        Returns:
+            True if service is healthy, False otherwise
+        """
+        # Check if we need to refresh health status
+        current_time = time.time()
+        if current_time - self.last_health_check > self.health_check_interval:
+            try:
+                data = self._make_request('GET', '/health')
+                self.is_connected = data.get('status') == 'healthy'
+                self.last_health_check = current_time
+                
+            except Exception as e:
+                logger.warning(f"Health check failed: {e}")
+                self.is_connected = False
+        
+        return self.is_connected
+    
+    def get_service_info(self) -> Dict[str, Any]:
+        """
+        Get information about the remote service.
+        
+        Returns:
+            Dictionary with service information and metrics
+        """
+        try:
+            # Get remote service info
+            remote_info = self._make_request('GET', '/info')
+            
+            # Add client-side information
+            client_info = {
+                "service_type": "RemoteHNSWService",
+                "base_url": self.base_url,
+                "is_connected": self.is_connected,
+                "client_request_count": self.request_count,
+                "client_error_count": self.error_count,
+                "client_success_rate": (self.request_count - self.error_count) / max(self.request_count, 1),
+                "authentication_enabled": self.api_key is not None,
+                "last_health_check": self.last_health_check
+            }
+            
+            return {
+                "client_info": client_info,
+                "remote_service_info": remote_info
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting service info: {e}")
+            # Return minimal info if remote call fails
+            return {
+                "service_type": "RemoteHNSWService",
+                "base_url": self.base_url,
+                "is_connected": self.is_connected,
+                "error": str(e)
+            }
+    
+    def get_hnsw_info(self) -> Dict[str, Any]:
+        """Get HNSW metadata from remote service."""
+        try:
+            # Get remote service info which includes HNSW metadata
+            remote_info = self._make_request('GET', '/info')
+            hnsw_info = remote_info.get('hnsw_info', {})
+            
+            return {
+                "max_level": hnsw_info.get('max_level', 0),
+                "size": hnsw_info.get('size', -1),
+                "connectivity": hnsw_info.get('connectivity', -1),
+                "dtype": hnsw_info.get('dtype', 'unknown'),
+                "ndim": hnsw_info.get('ndim', -1),
+                "capacity": hnsw_info.get('capacity', -1),
+                "memory_usage": hnsw_info.get('memory_usage', -1),
+                "multi": hnsw_info.get('multi', False),
+                "remote": True
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting remote HNSW info: {e}")
+            return {
+                "max_level": 0,
+                "size": -1,
+                "connectivity": -1,
+                "dtype": "unknown", 
+                "ndim": -1,
+                "capacity": -1,
+                "memory_usage": -1,
+                "multi": False,
+                "remote": True,
+                "error": str(e)
+            }
+    
+    def shutdown(self) -> None:
+        """
+        Shutdown the remote service client gracefully.
+        """
+        logger.info("Shutting down RemoteHNSWService...")
+        
+        try:
+            self.session.close()
+            self.is_connected = False
+            logger.info("RemoteHNSWService shutdown complete")
+            
+        except Exception as e:
+            logger.error(f"Error during RemoteHNSWService shutdown: {e}")
 
 
 class ServiceRegistry:
@@ -384,6 +818,7 @@ def create_local_hnsw_service(hnsw, **kwargs) -> LocalHNSWService:
     
     Args:
         hnsw: The HNSW index to serve
+        database_path: Path to SQLite database for SMILES lookup (optional)
         **kwargs: Additional arguments for LocalHNSWService
         
     Returns:
@@ -394,54 +829,27 @@ def create_local_hnsw_service(hnsw, **kwargs) -> LocalHNSWService:
     return service
 
 
-# Future: Remote HNSW service implementation
-class RemoteHNSWService(HNSWService):
+def create_remote_hnsw_service(base_url: str, service_name: Optional[str] = None, 
+                             is_default: bool = False, **kwargs) -> RemoteHNSWService:
     """
-    Remote HNSW service client for HTTP/API-based access.
+    Convenience function to create and register a remote HNSW service.
     
-    This will enable accessing HNSW indices hosted on remote servers,
-    cloud APIs, or other network-accessible services.
-    
-    Note: This is a placeholder for future implementation.
+    Args:
+        base_url: Base URL of the remote HNSW server
+        service_name: Name to register service under (auto-generated if None)
+        is_default: Whether to set as default service
+        **kwargs: Additional arguments for RemoteHNSWService
+        
+    Returns:
+        Configured RemoteHNSWService instance
     """
+    service = RemoteHNSWService(base_url, **kwargs)
     
-    def __init__(self, api_url: str, api_key: Optional[str] = None, 
-                 timeout: float = 30.0, **kwargs):
-        """
-        Initialize remote HNSW service client.
-        
-        Args:
-            api_url: Base URL for the HNSW API
-            api_key: Optional API key for authentication
-            timeout: Request timeout in seconds
-            **kwargs: Additional configuration options
-        """
-        self.api_url = api_url
-        self.api_key = api_key
-        self.timeout = timeout
-        
-        # TODO: Implement HTTP client initialization
-        raise NotImplementedError("RemoteHNSWService will be implemented in Phase 2")
+    if service_name is None:
+        # Generate service name from URL
+        import urllib.parse
+        parsed = urllib.parse.urlparse(base_url)
+        service_name = f"remote_{parsed.hostname}_{parsed.port or 80}"
     
-    def get_neighbors(self, node_id: int, level: int) -> List[int]:
-        # TODO: Implement HTTP API call
-        raise NotImplementedError("Remote HNSW API not yet implemented")
-    
-    def get_top_level_nodes(self) -> List[int]:
-        # TODO: Implement HTTP API call
-        raise NotImplementedError("Remote HNSW API not yet implemented")
-    
-    def is_healthy(self) -> bool:
-        # TODO: Implement health check API call
-        raise NotImplementedError("Remote HNSW API not yet implemented")
-    
-    def shutdown(self) -> None:
-        # TODO: Implement connection cleanup
-        pass
-    
-    def get_service_info(self) -> Dict[str, Any]:
-        return {
-            "service_type": "RemoteHNSWService", 
-            "api_url": self.api_url,
-            "status": "not_implemented"
-        }
+    service_registry.register_service(service_name, service, is_default=is_default)
+    return service

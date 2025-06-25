@@ -318,17 +318,17 @@ class DistributedWorker:
             new_scores = {}
             
             for i in range(0, len(neighbors), 2):
-                neighbor_id, neighbor_key = neighbors[i], neighbors[i+1]
+                neighbor_id, neighbor_smiles = neighbors[i], neighbors[i+1]
                 
                 try:
-                    # Check if we already have a score
-                    existing_score = self.coordination_service.scored_set.getScore(neighbor_key)
+                    # Check if we already have a score for this node_id
+                    existing_score = self.coordination_service.scored_set.getScore(neighbor_id)
                     if existing_score is None:
-                        # Calculate new score
-                        score = self.scoring_fn(neighbor_key)
-                        new_scores[neighbor_key] = score
+                        # Calculate new score using SMILES
+                        score = self.scoring_fn(neighbor_smiles)
+                        new_scores[neighbor_id] = (score, neighbor_smiles)  # Store both score and SMILES
                 except Exception as e:
-                    logger.warning(f"Error scoring neighbor {neighbor_key}: {e}")
+                    logger.warning(f"Error scoring neighbor {neighbor_id} (SMILES: {neighbor_smiles}): {e}")
                     continue
             
             score_time = time.time() - score_start
