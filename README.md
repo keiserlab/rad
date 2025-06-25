@@ -7,6 +7,7 @@ RAD is a scalable virtual screening library using HNSW graphs and distributed co
 
 - Redis
 - Python >=3.11
+- GCC >= 9.3
 
 ## Installation
 ```bash
