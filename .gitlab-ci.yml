@@ -1,6 +1,6 @@
 deploy shared:
   only:
-    - rad
+    - claude_dev
   stage: deploy
   tags:
     - rad
