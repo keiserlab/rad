@@ -22,3 +22,4 @@ deploy shared:
       --name ${CI_PROJECT_NAME}
       -p 0.0.0.0:8000:8000
       ${CI_PROJECT_NAME}
+      python scripts/start_hnsw_server.py --test-data --host 0.0.0.0
