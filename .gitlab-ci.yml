@@ -1,4 +1,6 @@
 deploy shared:
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
   only:
     - claude_dev
   stage: deploy
