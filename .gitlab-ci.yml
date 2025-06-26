@@ -1,0 +1,22 @@
+deploy shared:
+  only:
+    - rad
+  stage: deploy
+  tags:
+    - rad
+  script:
+    - echo "Building Docker image..."
+    - docker build -t "${CI_PROJECT_NAME}" .
+
+    - echo "Stopping and removing existing container (if exists)..."
+    - if [ $(docker ps -aq -f name=${CI_PROJECT_NAME}) ]; then
+      docker stop ${CI_PROJECT_NAME};
+      docker rm ${CI_PROJECT_NAME};
+      fi
+
+    - echo "Running new container..."
+    - docker run -d
+      --restart unless-stopped
+      --name ${CI_PROJECT_NAME}
+      -p 0.0.0.0:8000:8000
+      ${CI_PROJECT_NAME}

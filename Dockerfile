@@ -16,6 +16,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 
+EXPOSE 8000
+
 RUN python3 -m venv /venv
 ENV PATH="/venv/bin:$PATH"
 
