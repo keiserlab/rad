@@ -1,6 +1,6 @@
 # RAD (Retrieval Augmented Docking)
 
-RAD is a scalable virtual screening library using HNSW graphs and distributed computing. The architecture supports deployment from single machines to HPC clusters and cloud environments.
+RAD is a scalable virtual screening library using HNSW graphs and distributed computing. The architecture supports deployment from single machines to HPC clusters using a central coordination service.
 
 
 ## Requirements
@@ -117,7 +117,7 @@ traverser = RADTraverser(hnsw_service=hnsw_service, scoring_fn=score_fn)
 traverser = RADTraverser(hnsw_service=hnsw_service, scoring_fn=score_fn)
 ```
 
-**Distributed Deployment** (HPC/cloud):
+**Distributed Deployment** (HPC):
 ```python
 traverser = RADTraverser(
     hnsw_service=hnsw_service, 
@@ -132,10 +132,10 @@ traverser = RADTraverser(
 ```python
 from rad.hnsw_service import create_remote_hnsw_service
 
-# Start HNSW server elsewhere
-# python scripts/start_hnsw_server.py --database-path molecules.db --port 8000
+# Start HNSW server elsewhere OR use the publicly provided server
+# python scripts/start_hnsw_server.py --database-path molecules.db --hnsw-path index.usearch --port 8000
 
-hnsw_service = create_remote_hnsw_service("http://hnsw-server:8000")
+hnsw_service = create_remote_hnsw_service("https://rad.docking.org:8000")
 traverser = RADTraverser(hnsw_service=hnsw_service, scoring_fn=score_fn)
 ```
 
@@ -160,7 +160,7 @@ traverser.traverse(n_workers=4, timeout=3600)  # 1 hour
 ### Accessing the results
 RAD provides two methods for accessing results:
 
-**Traversal Order** (search path analysis):
+**Traversal Order**:
 ```python
 # Get molecules in the order they were discovered
 molecules = traverser.get_molecules()  # All molecules
@@ -170,7 +170,7 @@ for node_id, score, smiles in molecules:
     print(f"Node {node_id}: {smiles} (score: {score})")
 ```
 
-**Best Molecules** (results analysis):
+**Best Molecules**:
 ```python
 # Get top-scoring molecules regardless of discovery order
 best_molecules = traverser.get_best_molecules(10)  # Top 10 by score
@@ -204,13 +204,6 @@ python scripts/start_hnsw_server.py \
 The `examples/` folder contains a Jupyter notebook demonstrating the construction and traversal of the DUDE-Z DOCK HNSW investigated in the [original RAD paper](https://pubs.acs.org/doi/10.1021/acs.jcim.4c00683).
 
 For a larger billion-scale application and integration with Chemprop see the repo at https://github.com/bwhall61/lsd
-
-
-## Security Considerations
-
-**Important**: The included HNSW server (`scripts/start_hnsw_server.py`) is designed for research and development use. Before deploying to production or public networks, implemenent additional security features.
-
-The default configuration binds to `127.0.0.1` (localhost only) for security. Only bind to public interfaces (`0.0.0.0`) in trusted network environments.
 
 ## References
 The original [HNSW paper](https://arxiv.org/abs/1603.09320) by Yury Malkov and Dmitry Yashunin.
