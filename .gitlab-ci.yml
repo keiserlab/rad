@@ -21,5 +21,7 @@ deploy shared:
       --restart unless-stopped
       --name ${CI_PROJECT_NAME}
       -p 0.0.0.0:8000:8000
+      -v /mnt/nfs/exk/work/bwhall61/rad_website/hnsw_novec_index:/data/hnsw_novec_index
+      -v /mnt/nfs/exk/work/bwhall61/rad_website/node_smi_zid_hnsw1.db:/data/node_smi_zid_hnsw1.db
       ${CI_PROJECT_NAME}
-      python scripts/start_hnsw_server.py --test-data --host 0.0.0.0
+      python scripts/start_hnsw_server.py --database-path /data/node_smi_zid_hnsw1.db --hnsw-path /data/hnsw1_novec_index --host 0.0.0.0
