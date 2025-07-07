@@ -11,9 +11,9 @@ deploy shared:
     - docker build -t "${CI_PROJECT_NAME}" .
 
     - echo "Stopping and removing existing container (if exists)..."
-    - if [ $(docker ps -aq -f name=${CI_PROJECT_NAME}) ]; then
-      docker stop ${CI_PROJECT_NAME};
-      docker rm ${CI_PROJECT_NAME};
+    - if [ -n "$(docker ps -aq -f name=${CI_PROJECT_NAME})"" ]; then
+      docker stop "${CI_PROJECT_NAME}"
+      docker rm "${CI_PROJECT_NAME}"
       fi
 
     - echo "Running new container..."
