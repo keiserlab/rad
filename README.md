@@ -82,7 +82,7 @@ cursor.execute("""
 for key, smiles in zip(keys, smiles):
     cursor.execute("INSERT INTO nodes (node_key, smi) VALUES (?, ?)", (key, smiles))
 
-cursor.execute("CREATE INDEX idx_nodes_node_id ON nodes(node_key)")
+cursor.execute("CREATE INDEX idx_nodes_node_key ON nodes(node_key)")
 conn.commit()
 conn.close()
 ```
