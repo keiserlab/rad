@@ -28,7 +28,8 @@ try:
     from fastapi import FastAPI, HTTPException, Depends, Security, Request
     from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import JSONResponse
+    from fastapi.responses import JSONResponse, FileResponse
+    from fastapi.staticfiles import StaticFiles
     import uvicorn
 except ImportError:
     raise ImportError("FastAPI and uvicorn are required for HNSW server. Install with: pip install fastapi uvicorn")
@@ -321,6 +322,33 @@ class HNSWServerApp:
     
     def _setup_routes(self):
         """Setup FastAPI routes for HNSW operations."""
+        
+        @self.app.get("/")
+        async def serve_homepage():
+            """Serve the homepage HTML file."""
+            import os
+            # Look for index.html in current directory
+            index_path = os.path.join(os.getcwd(), "index.html")
+            if os.path.exists(index_path):
+                return FileResponse(index_path, media_type="text/html")
+            else:
+                return {"message": "RAD HNSW Service", "status": "running", "docs": "/docs"}
+        
+        @self.app.get("/{filename}")
+        async def serve_static_files(filename: str):
+            """Serve static files like images from current directory."""
+            import os
+            # Only serve common static file types for security
+            allowed_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.svg', '.css', '.js', '.ico'}
+            file_ext = os.path.splitext(filename)[1].lower()
+            
+            if file_ext in allowed_extensions:
+                file_path = os.path.join(os.getcwd(), filename)
+                if os.path.exists(file_path):
+                    return FileResponse(file_path)
+            
+            # If not a static file or doesn't exist, return 404
+            raise HTTPException(status_code=404, detail="File not found")
         
         @self.app.get("/neighbors/{node_id}/{level}")
         async def get_neighbors(
