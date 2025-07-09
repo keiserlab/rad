@@ -161,13 +161,9 @@ class HNSWServerApp:
                     logger.error(f"Database missing required column: {col_name}")
                     raise RuntimeError(f"Database missing required column: {col_name}")
             
-            # Test query
-            cursor.execute("SELECT COUNT(*) FROM nodes")
-            node_count = cursor.fetchone()[0]
-            
             conn.close()
             
-            logger.info(f"Database initialized successfully with {node_count} nodes")
+            logger.info(f"Database initialized successfully")
             
         except Exception as e:
             logger.error(f"Database initialization failed: {e}")
