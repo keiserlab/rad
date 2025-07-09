@@ -66,7 +66,7 @@ def load_hnsw_from_path(path: str):
         raise FileNotFoundError(f"HNSW index file not found: {path}")
     
     print(f"Loading HNSW index from {path}...")
-    hnsw = Index(path=path, view=True)
+    hnsw = Index(path=path, view=True, exclude_vectors=True)
     print(f"Loaded HNSW index with {len(hnsw)} vectors")
     return hnsw
 
