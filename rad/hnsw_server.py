@@ -303,6 +303,8 @@ class HNSWServerApp:
             return "health"
         elif "/info" in path:
             return "info"
+        elif "/ping" in path:
+            return "ping"
         else:
             return "unknown"
     
@@ -334,6 +336,7 @@ class HNSWServerApp:
             else:
                 return {"message": "RAD HNSW Service", "status": "running", "docs": "/docs"}
         
+        
         @self.app.get("/{filename}")
         async def serve_static_files(filename: str):
             """Serve static files like images from current directory."""
@@ -350,6 +353,10 @@ class HNSWServerApp:
             # If not a static file or doesn't exist, return 404
             raise HTTPException(status_code=404, detail="File not found")
         
+        @self.app.get("/ping")
+        async def ping():
+            return {"pong": True}
+
         @self.app.get("/neighbors/{node_id}/{level}")
         async def get_neighbors(
             node_id: int, 
