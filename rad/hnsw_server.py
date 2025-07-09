@@ -163,7 +163,12 @@ class HNSWServerApp:
     def _get_cache_filename(self) -> str:
         """Get the cache filename for top-level nodes."""
         cache_key = self._get_hnsw_cache_key()
-        return f"hnsw_top_nodes_cache_{cache_key}.json"
+        # Put cache next to the database file if possible (for Docker persistence)
+        if self.database_path:
+            cache_dir = os.path.dirname(self.database_path)
+            return os.path.join(cache_dir, f"hnsw_top_nodes_cache_{cache_key}.json")
+        else:
+            return f"hnsw_top_nodes_cache_{cache_key}.json"
     
     def _init_top_level_nodes_cache(self):
         """Initialize top-level nodes cache with full SMILES data, loading from file if available."""
