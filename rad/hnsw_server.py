@@ -36,6 +36,9 @@ except ImportError:
 
 import sqlite3
 import threading
+import json
+import os
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
@@ -111,6 +114,10 @@ class HNSWServerApp:
         self.db_lock = threading.Lock()
         self.db_executor = ThreadPoolExecutor(max_workers=db_pool_size)
         
+        # Pre-calculate and cache top-level nodes
+        self.top_level_nodes_cache = None
+        self._init_top_level_nodes_cache()
+        
         # Initialize database connection if provided
         if self.database_path:
             self._init_database()
@@ -133,6 +140,106 @@ class HNSWServerApp:
         self._setup_routes()
         
         logger.info("HNSWServerApp initialized")
+    
+    def _get_hnsw_cache_key(self) -> str:
+        """Generate a unique cache key based on HNSW level statistics."""
+        # Use level stats which comprehensively describe the index state
+        try:
+            levels_stats = self.hnsw.levels_stats
+            # Create a string representation of all level statistics
+            stats_data = []
+            for level_stat in levels_stats:
+                stats_data.append(f"{level_stat.nodes}_{level_stat.edges}_{level_stat.max_edges}_{level_stat.allocated_bytes}")
+            
+            stats_string = "|".join(stats_data)
+            return hashlib.md5(stats_string.encode()).hexdigest()
+            
+        except Exception as e:
+            # Fallback to basic properties if levels_stats fails
+            logger.warning(f"Failed to get levels_stats for cache key, using fallback: {e}")
+            properties = f"{len(self.hnsw)}_{self.hnsw.max_level}_{self.hnsw.connectivity}_{self.hnsw.ndim}"
+            return hashlib.md5(properties.encode()).hexdigest()
+    
+    def _get_cache_filename(self) -> str:
+        """Get the cache filename for top-level nodes."""
+        cache_key = self._get_hnsw_cache_key()
+        return f"hnsw_top_nodes_cache_{cache_key}.json"
+    
+    def _init_top_level_nodes_cache(self):
+        """Initialize top-level nodes cache with full SMILES data, loading from file if available."""
+        cache_file = self._get_cache_filename()
+        
+        # Try to load from cache file first
+        if os.path.exists(cache_file):
+            try:
+                with open(cache_file, 'r') as f:
+                    cached_data = json.load(f)
+                
+                self.top_level_nodes_cache = cached_data['top_nodes_with_smiles']
+                node_count = len(self.top_level_nodes_cache) // 2
+                logger.info(f"Loaded {node_count} top-level nodes with SMILES from cache file: {cache_file}")
+                return
+                
+            except Exception as e:
+                logger.warning(f"Failed to load top-level nodes cache from {cache_file}: {e}")
+        
+        # Cache miss or corrupted - calculate top-level nodes with SMILES
+        logger.info("Calculating top-level nodes with SMILES (this may take a while for large indexes)...")
+        start_time = time.time()
+        
+        # Step 1: Get top level nodes from HNSW (returns [node_id, node_key, ...])
+        hnsw_top_nodes = [int(x) for x in self.hnsw.get_top_level_nodes()]
+        
+        # Step 2: Extract node_keys for SMILES lookup
+        node_keys = [hnsw_top_nodes[i+1] for i in range(0, len(hnsw_top_nodes), 2)]
+        node_ids = [hnsw_top_nodes[i] for i in range(0, len(hnsw_top_nodes), 2)]
+        
+        # Step 3: Get SMILES for all node_keys (if database available)
+        smiles_map = {}
+        if self.database_path:
+            try:
+                smiles_map = self._sync_get_smiles_batch(node_keys)
+            except Exception as e:
+                logger.warning(f"Failed to get SMILES for top-level nodes: {e}")
+        
+        # Step 4: Build final response format [node_id, smiles, node_id, smiles, ...]
+        top_nodes_with_smiles = []
+        for node_id, node_key in zip(node_ids, node_keys):
+            smiles = smiles_map.get(node_key, "")  # Empty string if SMILES not found
+            top_nodes_with_smiles.extend([node_id, smiles])
+        
+        self.top_level_nodes_cache = top_nodes_with_smiles
+        
+        duration = time.time() - start_time
+        node_count = len(node_ids)
+        smiles_found = sum(1 for i in range(1, len(top_nodes_with_smiles), 2) if top_nodes_with_smiles[i])
+        
+        logger.info(f"Calculated {node_count} top-level nodes ({smiles_found} with SMILES) in {duration:.2f} seconds")
+        
+        # Step 5: Save to cache file
+        try:
+            cache_data = {
+                'top_nodes_with_smiles': top_nodes_with_smiles,
+                'node_count': node_count,
+                'smiles_found': smiles_found,
+                'cache_key': self._get_hnsw_cache_key(),
+                'timestamp': time.time(),
+                'database_path': self.database_path,
+                'hnsw_properties': {
+                    'size': len(self.hnsw),
+                    'max_level': self.hnsw.max_level,
+                    'connectivity': self.hnsw.connectivity,
+                    'ndim': self.hnsw.ndim
+                }
+            }
+            
+            with open(cache_file, 'w') as f:
+                json.dump(cache_data, f, indent=2)
+            
+            logger.info(f"Saved top-level nodes cache to: {cache_file}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to save top-level nodes cache to {cache_file}: {e}")
     
     def _init_database(self):
         """Initialize database connection and validate schema."""
@@ -395,30 +502,22 @@ class HNSWServerApp:
             Get top-level nodes for traversal priming with SMILES.
             
             Returns alternating list of [node_id, smiles, node_id, smiles, ...].
+            Uses pre-calculated cache for fast response.
             """
             try:
-                # Get top level nodes from HNSW (returns [node_id, node_key, ...])
-                hnsw_top_nodes = [int(x) for x in self.hnsw.get_top_level_nodes()]
+                # Use cached data for instant response
+                if self.top_level_nodes_cache is None:
+                    raise HTTPException(status_code=503, detail="Top-level nodes cache not initialized")
                 
-                # Extract node_keys for SMILES lookup
-                node_keys = [hnsw_top_nodes[i+1] for i in range(0, len(hnsw_top_nodes), 2)]
-                node_ids = [hnsw_top_nodes[i] for i in range(0, len(hnsw_top_nodes), 2)]
-                
-                # Get SMILES for all node_keys in batch
-                smiles_map = await self._get_smiles_batch(node_keys)
-                
-                # Build response with [node_id, smiles, ...] format
-                top_nodes_with_smiles = []
-                for node_id, node_key in zip(node_ids, node_keys):
-                    smiles = smiles_map.get(node_key, "")  # Empty string if SMILES not found
-                    top_nodes_with_smiles.extend([node_id, smiles])
+                node_count = len(self.top_level_nodes_cache) // 2
                 
                 logger.debug(f"Request {request.state.request_id}: "
-                           f"Found {len(node_ids)} top-level nodes")
+                           f"Returning {node_count} cached top-level nodes")
                 
                 return {
-                    "top_nodes": top_nodes_with_smiles,
-                    "node_count": len(node_ids),
+                    "top_nodes": self.top_level_nodes_cache,
+                    "node_count": node_count,
+                    "cached": True,
                     "request_id": request.state.request_id
                 }
                 
