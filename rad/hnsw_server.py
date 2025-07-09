@@ -336,23 +336,6 @@ class HNSWServerApp:
             else:
                 return {"message": "RAD HNSW Service", "status": "running", "docs": "/docs"}
         
-        
-        @self.app.get("/{filename}")
-        async def serve_static_files(filename: str):
-            """Serve static files like images from current directory."""
-            import os
-            # Only serve common static file types for security
-            allowed_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.svg', '.css', '.js', '.ico'}
-            file_ext = os.path.splitext(filename)[1].lower()
-            
-            if file_ext in allowed_extensions:
-                file_path = os.path.join(os.getcwd(), filename)
-                if os.path.exists(file_path):
-                    return FileResponse(file_path)
-            
-            # If not a static file or doesn't exist, return 404
-            raise HTTPException(status_code=404, detail="File not found")
-        
         @self.app.get("/ping")
         async def ping():
             return {"pong": True}
@@ -518,6 +501,22 @@ class HNSWServerApp:
             except Exception as e:
                 logger.error(f"Error getting service info: {e}")
                 raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+        @self.app.get("/{filename}")
+        async def serve_static_files(filename: str):
+            """Serve static files like images from current directory."""
+            import os
+            # Only serve common static file types for security
+            allowed_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.svg', '.css', '.js', '.ico'}
+            file_ext = os.path.splitext(filename)[1].lower()
+            
+            if file_ext in allowed_extensions:
+                file_path = os.path.join(os.getcwd(), filename)
+                if os.path.exists(file_path):
+                    return FileResponse(file_path)
+            
+            # If not a static file or doesn't exist, return 404
+            raise HTTPException(status_code=404, detail="File not found")
 
 
 def create_hnsw_server(hnsw, **kwargs) -> HNSWServerApp:
