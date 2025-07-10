@@ -461,14 +461,31 @@ class HNSWServerApp:
             Returns alternating list of [neighbor_id, smiles, neighbor_id, smiles, ...].
             """
             try:
-                # Validate inputs
+                # Validate inputs to prevent segfaults
                 if node_id < 0:
                     raise HTTPException(status_code=400, detail="node_id must be non-negative")
                 if level < 0:
                     raise HTTPException(status_code=400, detail="level must be non-negative")
                 
-                # Query HNSW for neighbors (returns [neighbor_id, neighbor_key, ...])
-                hnsw_neighbors = [int(x) for x in self.hnsw.get_neighbors(node_id, level)]
+                # Check if node_id is within valid range
+                hnsw_size = len(self.hnsw)
+                if node_id >= hnsw_size:
+                    raise HTTPException(status_code=400, detail=f"node_id {node_id} is out of range (max: {hnsw_size-1})")
+                
+                # Check if level is within valid range for this index
+                max_level = self.hnsw.max_level
+                if level > max_level:
+                    raise HTTPException(status_code=400, detail=f"level {level} is out of range (max: {max_level})")
+                
+                # Additional safety: We can't easily check node.level() from Python without risking segfault,
+                # but we can catch any exceptions from the get_neighbors call
+                try:
+                    # Query HNSW for neighbors (returns [neighbor_id, neighbor_key, ...])
+                    hnsw_neighbors = [int(x) for x in self.hnsw.get_neighbors(node_id, level)]
+                except Exception as e:
+                    # This catches cases where the node exists but doesn't have the requested level
+                    logger.warning(f"get_neighbors failed for node_id={node_id}, level={level}: {e}")
+                    raise HTTPException(status_code=400, detail=f"Invalid node_id/level combination: node {node_id} may not exist at level {level}")
                 
                 # Extract node_keys for SMILES lookup
                 node_keys = [hnsw_neighbors[i+1] for i in range(0, len(hnsw_neighbors), 2)]
