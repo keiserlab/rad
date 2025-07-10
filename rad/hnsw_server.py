@@ -461,7 +461,7 @@ class HNSWServerApp:
             Returns alternating list of [neighbor_id, smiles, neighbor_id, smiles, ...].
             """
             try:
-                # Validate inputs to prevent segfaults
+                # Validate inputs
                 if node_id < 0:
                     raise HTTPException(status_code=400, detail="node_id must be non-negative")
                 if level < 0:
@@ -477,8 +477,7 @@ class HNSWServerApp:
                 if level > max_level:
                     raise HTTPException(status_code=400, detail=f"level {level} is out of range (max: {max_level})")
                 
-                # Additional safety: We can't easily check node.level() from Python without risking segfault,
-                # but we can catch any exceptions from the get_neighbors call
+                # Additional safety: We can't easily check node.level() from python,but we can catch any exceptions from the get_neighbors call
                 try:
                     # Query HNSW for neighbors (returns [neighbor_id, neighbor_key, ...])
                     hnsw_neighbors = [int(x) for x in self.hnsw.get_neighbors(node_id, level)]
