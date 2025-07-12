@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>RAD - Retrieval Augmented Docking</title>
     <style>
         * {
@@ -444,16 +444,44 @@
         }
 
         @media (max-width: 768px) {
+            body {
+                overflow-x: hidden;
+            }
+            
+            .container {
+                padding: 15px;
+                max-width: 100%;
+                overflow-x: hidden;
+            }
+            
             .main-header h1 {
                 font-size: 2.8em;
+                text-align: center;
             }
             
             .main-header .subtitle {
                 font-size: 1.3em;
+                text-align: center;
+            }
+            
+            .hero-visual img {
+                max-width: 100%;
+                width: 100%;
+                height: auto;
             }
             
             .cta-section, .method-explanation, .learn-more {
-                padding: 25px;
+                padding: 20px;
+                margin: 20px 0;
+            }
+            
+            .code-block {
+                font-size: 0.75em;
+                padding: 15px;
+                overflow-x: auto;
+                max-width: 100%;
+                white-space: pre-wrap;
+                word-break: break-all;
             }
             
             .resources-container {
@@ -463,17 +491,66 @@
             
             .features-grid {
                 grid-template-columns: repeat(2, 1fr);
-                gap: 20px;
+                gap: 15px;
+            }
+            
+            .feature-card {
+                padding: 20px 15px;
+            }
+            
+            .method-steps {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 15px;
+            }
+            
+            .method-step {
+                padding: 15px;
+            }
+            
+            .learn-more {
+                text-align: center;
+            }
+            
+            .resource-card, .github-link-card {
+                padding: 15px;
             }
         }
 
         @media (max-width: 480px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .main-header h1 {
+                font-size: 2.2em;
+            }
+            
+            .main-header .subtitle {
+                font-size: 1.2em;
+            }
+            
             .features-grid {
                 grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            
+            .method-steps {
+                grid-template-columns: 1fr;
+                gap: 15px;
             }
             
             .hero-section {
-                gap: 30px;
+                gap: 20px;
+            }
+            
+            .cta-section, .method-explanation, .learn-more {
+                padding: 15px;
+                margin: 15px 0;
+            }
+            
+            .code-block {
+                font-size: 0.7em;
+                padding: 12px;
             }
         }
     </style>
