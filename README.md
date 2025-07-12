@@ -1,12 +1,16 @@
 # RAD (Retrieval Augmented Docking)
 
-## Requirements
-Redis
+RAD is a scalable virtual screening library using HNSW graphs and distributed computing. The architecture supports deployment from single machines to HPC clusters using a central coordination service.
 
-Python >=3.11
+
+## Requirements
+
+- Redis
+- Python >=3.11
+- GCC >= 9.3
 
 ## Installation
-```
+```bash
 git clone --recursive https://github.com/keiserlab/rad.git
 cd rad
 pip install . 
@@ -14,13 +18,26 @@ pip install .
 
 We also provide a Dockerfile containing all required software.
 
+## Architecture Overview
+
+RAD uses a service-oriented design with three main components:
+
+1. **HNSW Service**: Handles HNSW neighbor searches and SMILES lookup
+2. **Coordination Service**: Manages work distribution, acts as HNSW proxy, and maintains state via Redis
+3. **Distributed Workers**: Lightweight scoring processes that can run anywhere with only Redis access
+
+
+
 ## Running RAD
-There are two primary things to run RAD: 
-- Constructing the HNSW graph
-- Defining a scoring function to use for traversal
+
+### Basic Workflow
+1. Build HNSW graph from molecular fingerprints
+2. Create SQLite database mapping node keys to SMILES
+3. Define a SMILES-based scoring function
+4. Initialize RAD services and run traversal
 
 ### Constructing the HNSW
-Constructing the HNSW graph consists of setting the construction parameters *expansion_add* and *connectivity* and then adding each molecule by providing a numerical key and a its fingerprint.
+Constructing the HNSW graph consists of setting the construction parameters *expansion_add* and *connectivity* and then adding each molecule by providing a numerical key and its fingerprint.
 
 *expansion_add* controls the number of candidates considered as potential neighbors during element insertion, while *connectivity* controls how many of these candidates are actually connected to the inserted element.
 
@@ -44,33 +61,82 @@ hnsw.add(keys, fingerprints, log="Building HNSW")
 The fingerprints are expected to be an (*n* x *d/8*) numpy array where each row is a packed binary fingerprint. e.g turning a 1024-bit binary fingerprint into a 128 uint8 fingerprint with `np.packbits()`. See the example notebook for more details.
 
 
-### Defining a scoring function
-To traverse the HNSW graphs, you must provide a scoring function that maps a molecule's key to a score, where numerically smaller scores are better. Here is a mock example of a scoring function:
+### Creating SQLite Database for SMILES mapping
+RAD integrates with SQLite to provide SMILES directly to scoring functions:
 
-```
-def score_fn(key):
-    fp = fingerprints[key]
-    score = score_from_fp(fp)
-    return score
+```python
+import sqlite3
+
+# Create database mapping HNSW keys to SMILES
+conn = sqlite3.connect('molecules.db')
+cursor = conn.cursor()
+
+cursor.execute("""
+    CREATE TABLE nodes (
+        node_key INTEGER PRIMARY KEY,
+        smi TEXT NOT NULL
+    )
+""")
+
+# Insert SMILES data
+for key, smiles in zip(keys, smiles):
+    cursor.execute("INSERT INTO nodes (node_key, smi) VALUES (?, ?)", (key, smiles))
+
+cursor.execute("CREATE INDEX idx_nodes_node_key ON nodes(node_key)")
+conn.commit()
+conn.close()
 ```
 
-### Initializing a RAD Traverser
-With the HNSW graphs built and the scoring function defined, we can initialize a `RADTraverser`
+### Defining a SMILES-Based Scoring Function
+Scoring functions receive SMILES strings and return a score. Numerically smaller scores are considered better. Here is a mock example:
 
+```python
+def score_fn(smiles: str) -> float:
+    score = calculate_docking_score(smiles)
+    return score  # Lower scores are better
 ```
+
+### Initializing RAD Services
+With the HNSW index, SMILES database, and scoring function ready, initialize the RAD traverser:
+
+```python
+from rad.hnsw_service import create_local_hnsw_service
 from rad.traverser import RADTraverser
 
-traverser = RADTraverser(hnsw=hnsw, scoring_fn=score_fn)
+# Create HNSW service with database integration
+hnsw_service = create_local_hnsw_service(hnsw, database_path='molecules.db')
+
+# Create traverser with SMILES-based scoring
+traverser = RADTraverser(hnsw_service=hnsw_service, scoring_fn=score_fn)
 ```
 
-This initialization does two things:
-1. Starts a process which handles the HNSW neighbor queries.
-2. Starts a process which runs a redis server and handles the traversal queue.
+### Deployment Modes
 
-You can also connect to an already running redis server by passing the host and port of the server. This is useful for HPC environments where a single node can manage the traversal queue for many worker nodes doing the scoring:
-
+**Local Deployment** (single machine):
+```python
+traverser = RADTraverser(hnsw_service=hnsw_service, scoring_fn=score_fn)
 ```
-traverser = RADTraverser(hnsw=hnsw, scoring_fn=score_fn, redis_host='xxx:xxx:xxx', redis_port=6379)
+
+**Distributed Deployment** (HPC):
+```python
+traverser = RADTraverser(
+    hnsw_service=hnsw_service, 
+    scoring_fn=score_fn,
+    redis_host='head-node.cluster',
+    redis_port=6379,
+    namespace='job_12345'
+)
+```
+
+**Remote HNSW Service**:
+```python
+from rad.hnsw_service import create_remote_hnsw_service
+
+# Start HNSW server elsewhere OR use the publicly provided server
+# python scripts/start_hnsw_server.py --database-path molecules.db --hnsw-path index.usearch --port 8000
+
+hnsw_service = create_remote_hnsw_service("https://rad.docking.org:8000")
+traverser = RADTraverser(hnsw_service=hnsw_service, scoring_fn=score_fn)
 ```
 
 ### Priming the RAD Traverser
@@ -81,34 +147,61 @@ traverser.prime()
 ```
 
 ### Performing the traversal
-The traversal then proceeds until a max number of molecules is scored or a timeout is reached. 
+The traversal proceeds until a maximum number of molecules is scored or a timeout is reached:
 
-```
-# Note that n_workers must be set to 1 for now until I fix a bug.
-traverser.traverse(n_workers=1, n_to_score=100,000) # Run the traversal until 100k molecules are scored
-```
-or 
-```
-traverser.traveser(n_workers=1, timeout=120) # Run the traversal for 2 minutes
+```python
+# Run traversal until 100k molecules are scored
+traverser.traverse(n_workers=4, n_to_score=100_000)
+
+# Or run traversal for a specific time
+traverser.traverse(n_workers=4, timeout=3600)  # 1 hour
 ```
 
 ### Accessing the results
-The results can be accessed by looping over the scored set which contains the keys in the order that they were traversed. 
+RAD provides two methods for accessing results:
 
-```
-results = []
-for key, score in traverser.scored_set:
-    results.append((key,score))
+**Traversal Order**:
+```python
+# Get molecules in the order they were discovered
+molecules = traverser.get_molecules()  # All molecules
+first_100 = traverser.get_molecules(100)  # First 100 molecules
+
+for node_id, score, smiles in molecules:
+    print(f"Node {node_id}: {smiles} (score: {score})")
 ```
 
-### Shutting down the HNSW and redis servers
-To gracefully shut down the HNSW and redis servers:
+**Best Molecules**:
+```python
+# Get top-scoring molecules regardless of discovery order
+best_molecules = traverser.get_best_molecules(10)  # Top 10 by score
+
+for node_id, score, smiles in best_molecules:
+    print(f"Top hit: {smiles} (score: {score})")
 ```
+
+
+### Service Management and Cleanup
+Gracefully shutdown all services:
+```python
 traverser.shutdown()
 ```
 
-### Example
-In the example folder, there is a jupyter notebook for constructing and traversing the DUDE-Z DOCK HNSW investigated in the [original RAD paper](https://pubs.acs.org/doi/10.1021/acs.jcim.4c00683).
+### Advanced Usage
+
+**Starting HNSW Server Independently**:
+```bash
+# Start dedicated HNSW server with database
+python scripts/start_hnsw_server.py \
+  --hnsw-path /data/index.usearch \
+  --database-path /data/molecules.db \
+  --host 0.0.0.0 \
+  --port 8000
+```
+
+
+## Example Usage
+
+The `examples/` folder contains a Jupyter notebook demonstrating the construction and traversal of the DUDE-Z DOCK HNSW investigated in the [original RAD paper](https://pubs.acs.org/doi/10.1021/acs.jcim.4c00683).
 
 For a larger billion-scale application and integration with Chemprop see the repo at https://github.com/bwhall61/lsd
 

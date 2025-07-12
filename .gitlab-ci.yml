@@ -1,0 +1,26 @@
+deploy shared:
+  variables:
+    GIT_SUBMODULE_STRATEGY: recursive
+  only:
+    - claude_dev
+  stage: deploy
+  tags:
+    - rad
+  script:
+    - echo "Building Docker image..."
+    - docker build -t "${CI_PROJECT_NAME}" .
+
+    - echo "Stopping and removing existing container (if exists)..."
+    - if [ -n "$(docker ps -aq -f name=${CI_PROJECT_NAME})" ]; then
+      docker stop "${CI_PROJECT_NAME}" || true;
+      docker rm "${CI_PROJECT_NAME}" || true;
+      fi
+
+    - echo "Running new container..."
+    - docker run -d
+      --restart unless-stopped
+      --name ${CI_PROJECT_NAME}
+      -p 0.0.0.0:8000:8000
+      -v /mnt/nfs/exk/work/bwhall61/rad_website:/data
+      ${CI_PROJECT_NAME}
+      python scripts/start_hnsw_server.py --database-path /data/node_smi_zid.db --hnsw-path /data/usearch_index --host 0.0.0.0

@@ -12,6 +12,11 @@ setup(
         "tqdm>=4.66.2",
         "notebook>=6.5.0",
         "rdkit>=2024.09.5",
+        "fastapi>=0.104.0",
+        "uvicorn>=0.24.0",
+        "requests>=2.31.0",
+        "pytest>=7.0.0",
+        "httpx>=0.24.0",  # Required for FastAPI TestClient
         # TODO: Improve the way we install the usearch submodule 
         f"usearch @ file://localhost/{os.getcwd()}/usearch/"
     ],

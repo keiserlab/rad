@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RAD - Retrieval Augmented Docking</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #e2e8f0;
+            background: #0a0e1a;
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 20%, rgba(56, 178, 172, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(147, 51, 234, 0.05) 0%, transparent 50%),
+                radial-gradient(circle at 40% 70%, rgba(59, 130, 246, 0.03) 0%, transparent 50%),
+                radial-gradient(circle at 90% 10%, rgba(16, 185, 129, 0.03) 0%, transparent 50%);
+            z-index: -1;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .main-header {
+            text-align: center;
+            padding: 40px 0 30px 0;
+        }
+
+        .main-header h1 {
+            font-size: 4em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            color: #f1f5f9;
+        }
+
+        .main-header .subtitle {
+            font-size: 1.6em;
+            color: #cbd5e1;
+            font-weight: 300;
+            margin-bottom: 20px;
+        }
+
+        .main-header .tagline {
+            font-size: 1.2em;
+            color: #94a3b8;
+            max-width: 800px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+
+        .hero-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 50px;
+            align-items: start;
+            margin-bottom: 60px;
+        }
+
+        .hero-content {
+            padding: 0;
+        }
+
+        .hero-content .description {
+            font-size: 1.05em;
+            color: #cbd5e1;
+            margin-bottom: 30px;
+            line-height: 1.7;
+        }
+
+        .hero-visual {
+            text-align: center;
+            padding: 0;
+        }
+
+        .hero-visual img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+            border: 1px solid rgba(71, 85, 105, 0.3);
+        }
+
+        .cta-section {
+            background: linear-gradient(135deg, rgba(30, 58, 138, 0.4) 0%, rgba(67, 56, 202, 0.4) 100%);
+            border-radius: 20px;
+            padding: 30px;
+            margin: 30px 0 0 0;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+
+        .cta-section h2 {
+            color: #f1f5f9;
+            margin-bottom: 15px;
+            font-size: 1.8em;
+        }
+
+        .cta-section p {
+            color: #cbd5e1;
+            margin-bottom: 20px;
+            font-size: 1.05em;
+        }
+
+        .code-block {
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 20px;
+            border-radius: 12px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 0.85em;
+            overflow-x: auto;
+            border: 1px solid rgba(71, 85, 105, 0.3);
+            margin: 15px 0;
+            white-space: pre;
+        }
+
+        .code-block .comment {
+            color: #10b981;
+        }
+
+        .features-section {
+            margin: 80px 0;
+        }
+
+        .features-section h2 {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 50px;
+            color: #f1f5f9;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 25px;
+        }
+
+        .feature-card {
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 20px;
+            padding: 30px;
+            border: 1px solid rgba(71, 85, 105, 0.3);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+        }
+
+        .feature-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+            border-color: rgba(96, 165, 250, 0.5);
+        }
+
+        .feature-card h3 {
+            color: #60a5fa;
+            margin-bottom: 15px;
+            font-size: 1.4em;
+        }
+
+        .feature-card p {
+            color: #cbd5e1;
+            line-height: 1.7;
+        }
+
+        .method-explanation {
+            background: rgba(15, 23, 42, 0.9);
+            border-radius: 20px;
+            padding: 50px;
+            margin: 60px 0;
+            border: 1px solid rgba(71, 85, 105, 0.3);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+        }
+
+        .method-explanation h2 {
+            color: #f1f5f9;
+            margin-bottom: 30px;
+            font-size: 2.2em;
+            text-align: center;
+        }
+
+        .method-explanation .method-description {
+            color: #cbd5e1;
+            font-size: 1.1em;
+            line-height: 1.8;
+            margin-bottom: 30px;
+        }
+
+        .method-steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 40px;
+        }
+
+        .method-step {
+            background: rgba(30, 41, 59, 0.6);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(71, 85, 105, 0.3);
+            text-align: center;
+        }
+
+        .method-step h4 {
+            color: #60a5fa;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .method-step p {
+            color: #94a3b8;
+            font-size: 0.9em;
+        }
+
+        .learn-more {
+            background: rgba(15, 23, 42, 0.9);
+            border-radius: 20px;
+            padding: 40px;
+            margin: 60px 0;
+            border: 1px solid rgba(71, 85, 105, 0.3);
+        }
+
+        .learn-more h2 {
+            color: #f1f5f9;
+            margin-bottom: 30px;
+            font-size: 2em;
+            text-align: center;
+        }
+
+        .resources-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 50px;
+            margin-top: 30px;
+            align-items: stretch;
+        }
+
+        .resources-section {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .resources-section h3 {
+            color: #60a5fa;
+            font-size: 1.4em;
+            margin-bottom: 25px;
+            text-align: center;
+        }
+
+        .installation-cards {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            flex-grow: 1;
+            justify-content: space-between;
+        }
+
+        .publications-cards {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            flex-grow: 1;
+            justify-content: space-between;
+        }
+
+        .github-link-card {
+            background: rgba(30, 41, 59, 0.6);
+            border-radius: 15px;
+            padding: 15px;
+            border: 1px solid rgba(71, 85, 105, 0.3);
+            text-align: center;
+        }
+
+        .github-link-card .icon {
+            width: 40px;
+            height: 40px;
+            margin: 0 auto 10px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: rgba(59, 130, 246, 0.2);
+        }
+
+        .github-link-card .icon svg {
+            width: 20px;
+            height: 20px;
+            fill: #60a5fa;
+        }
+
+        .github-link-card h3 {
+            color: #60a5fa;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .github-link-card p {
+            color: #cbd5e1;
+            margin-bottom: 15px;
+            line-height: 1.5;
+            font-size: 0.9em;
+        }
+
+        .github-link-card a {
+            display: inline-block;
+            background: #3b82f6;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.9em;
+            transition: background-color 0.2s;
+        }
+
+        .github-link-card a:hover {
+            background: #2563eb;
+        }
+
+        .resource-card {
+            background: rgba(30, 41, 59, 0.8);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(71, 85, 105, 0.3);
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .resource-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+            border-color: rgba(96, 165, 250, 0.5);
+        }
+
+        .resource-card .icon {
+            width: 45px;
+            height: 45px;
+            margin: 0 auto 15px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background: rgba(59, 130, 246, 0.2);
+        }
+
+        .resource-card .icon svg {
+            width: 22px;
+            height: 22px;
+            fill: #60a5fa;
+        }
+
+        .resource-card h3 {
+            color: #60a5fa;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .resource-card p {
+            color: #cbd5e1;
+            margin-bottom: 15px;
+            line-height: 1.5;
+            font-size: 0.9em;
+        }
+
+        .resource-card a {
+            display: inline-block;
+            background: #3b82f6;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.9em;
+            transition: background-color 0.2s;
+        }
+
+        .resource-card a:hover {
+            background: #2563eb;
+        }
+
+        .footer {
+            text-align: center;
+            color: #94a3b8;
+            padding: 60px 0;
+            margin-top: 80px;
+            border-top: 1px solid rgba(71, 85, 105, 0.3);
+        }
+
+        .footer a {
+            color: #60a5fa;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer a:hover {
+            color: #93c5fd;
+        }
+
+        @media (max-width: 1024px) {
+            .hero-section {
+                grid-template-columns: 1fr;
+                gap: 40px;
+                text-align: center;
+            }
+            
+            .main-header h1 {
+                font-size: 3.5em;
+            }
+            
+            .main-header .subtitle {
+                font-size: 1.5em;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
+                overflow-x: hidden;
+            }
+            
+            .container {
+                padding: 15px;
+                max-width: 100%;
+                overflow-x: hidden;
+            }
+            
+            .main-header h1 {
+                font-size: 2.8em;
+                text-align: center;
+            }
+            
+            .main-header .subtitle {
+                font-size: 1.3em;
+                text-align: center;
+            }
+            
+            .hero-visual img {
+                max-width: 100%;
+                width: 100%;
+                height: auto;
+            }
+            
+            .cta-section, .method-explanation, .learn-more {
+                padding: 20px;
+                margin: 20px 0;
+            }
+            
+            .code-block {
+                font-size: 0.75em;
+                padding: 15px;
+                overflow-x: auto;
+                max-width: 100%;
+                white-space: pre-wrap;
+                word-break: break-all;
+            }
+            
+            .resources-container {
+                grid-template-columns: 1fr;
+                gap: 30px;
+            }
+            
+            .features-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 15px;
+            }
+            
+            .feature-card {
+                padding: 20px 15px;
+            }
+            
+            .method-steps {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 15px;
+            }
+            
+            .method-step {
+                padding: 15px;
+            }
+            
+            .learn-more {
+                text-align: center;
+            }
+            
+            .resource-card, .github-link-card {
+                padding: 15px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .main-header h1 {
+                font-size: 2.2em;
+            }
+            
+            .main-header .subtitle {
+                font-size: 1.2em;
+            }
+            
+            .features-grid {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            
+            .method-steps {
+                grid-template-columns: 1fr;
+                gap: 15px;
+            }
+            
+            .hero-section {
+                gap: 20px;
+            }
+            
+            .cta-section, .method-explanation, .learn-more {
+                padding: 15px;
+                margin: 15px 0;
+            }
+            
+            .code-block {
+                font-size: 0.7em;
+                padding: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="main-header">
+            <h1>RAD</h1>
+            <div class="subtitle">Retrieval Augmented Docking</div>
+        </div>
+
+        <div class="hero-section">
+            <div class="hero-content">
+                <div class="description">
+                    RAD uses Hierarchical Navigable Small World (HNSW) graphs to accelerate virtual screening workflows. This public service allows researchers to screen a chemical space of 2 billion <a href="https://cartblanche.docking.org/">ZINC-22</a> lead-like molecules with their own scoring function.
+                </div>
+                
+                <div class="cta-section">
+                    <h2>Easily Screen 2 Billion Molecules</h2>
+                    <p>Connect to our public HNSW service with your own scoring function and begin virtual screening of 2 billion molecules in minutes</p>
+                    <div class="code-block"><span class="comment"># Define your custom scoring function</span>
+def score_molecule(smiles: str) -> float:
+    return score
+
+<span class="comment"># Connect to the public RAD server</span>
+from rad.hnsw_service import create_remote_hnsw_service
+hnsw_service = create_remote_hnsw_service("https://rad.docking.org:8000")
+
+<span class="comment"># Start Screening</span>
+from rad.traverser import RADTraverser
+traverser = RADTraverser(hnsw_service=hnsw_service, scoring_fn=score_molecule)
+traverser.prime()
+traverser.traverse(n_workers=8, n_to_score=100000)</div>
+
+                </div>
+            </div>
+            
+            <div class="hero-visual">
+                <img src="drawing.png" alt="RAD Method Visualization - Hierarchical HNSW layers with molecular structures">
+            </div>
+        </div>
+
+        <div class="method-explanation">
+            <h2>The RAD Method</h2>
+            <div class="method-description">
+                Ultra-large chemical libraries of billions of molecules are pre-organized into Hierarchical Navigable Small World (HNSW) graphs with molecules distributed across multiple layers and connected based on similarity.
+                User-defined scoring functions guide a traversal through this graph, allowing researchers to quickly find top-scoring molecules while avoiding expensive calculations on a majority of the library.
+            </div>
+            
+            <div class="method-steps">
+                <div class="method-step">
+                    <h4>Hierarchical Organization</h4>
+                    <p>Sparse hierarchy allows rapid identification of promising areas of chemical space</p>
+                </div>
+                <div class="method-step">
+                    <h4>Small-World Graphs</h4>
+                    <p>Graph edges are based on Tanimoto similarity and chosen to maintain the small-world property, enabling efficient exploration</p>
+                </div>
+                <div class="method-step">
+                    <h4>Best First Traversal</h4>
+                    <p>User-defined scoring functions guide graph traversal to quickly find good-scoring molecules while avoiding unpromising areas of chemical space</p>
+                </div>
+                <div class="method-step">
+                    <h4>Distributed Scoring</h4>
+                    <p>Lightweight scoring workers coordinate with a single central process to enable massively parallel scoring</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="features-section">
+            <h2>Why Choose RAD?</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <h3>Efficient Screening</h3>
+                    <p>RAD can find over 50% of the top-scoring molecules in a library, while doing the expensive scoring calculation for only 1%.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Billion-Scale Validated</h3>
+                    <p>Proven performance on billion-scale chemical libraries with traditional molecular docking and modern ML models.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Distributed Computing</h3>
+                    <p>Scale from single machines to HPC clusters with Redis-coordinated workers that can run anywhere.</p>
+                </div>
+                <div class="feature-card">
+                    <h3>Flexible Infrastructure</h3>
+                    <p>Deploy locally, use our hosted public service to avoid setup complexity, or run your own infrastructure.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="learn-more">
+            <h2>Get Started & Learn More</h2>
+            <div class="resources-container">
+                <div class="resources-section">
+                    <h3>Installation & Documentation</h3>
+                    <div class="installation-cards">
+                        <div class="resource-card">
+                        <!-- <div class="icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                        </div> -->
+                        <h3>Install</h3>
+                        <div class="code-block" style="margin-bottom: 15px; font-size: 1em;">git clone --recursive https://github.com/keiserlab/rad.git
+cd rad
+pip install .</div>
+                    </div>
+                    <div class="github-link-card">
+                        <!-- <div class="icon">
+                            <svg viewBox="0 0 24 24">
+                                <path d="M12 0C5.373 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.6.11.793-.26.793-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.73.083-.73 1.205.085 1.838 1.236 1.838 1.236 1.07 1.835 2.807 1.305 3.492.997.108-.776.42-1.305.763-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.3 24 12c0-6.627-5.373-12-12-12"/>
+                            </svg>
+                        </div> -->
+                        <h3>Github</h3>
+                        <p>Find detailed instructions, examples, and documentation</p>
+                        <a href="https://github.com/keiserlab/rad" target="_blank">View on GitHub</a>
+                    </div>
+                    </div>
+                </div>
+                
+                <div class="resources-section">
+                    <h3>Publications</h3>
+                    <div class="publications-cards">
+                        <div class="resource-card">
+                            <!-- <div class="icon">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                                </svg>
+                            </div> -->
+                            <h3>Original RAD Paper</h3>
+                            <p>Read the original paper describing the method and showcasing the performance on the DUDE-Z dataset.</p>
+                            <a href="https://pubs.acs.org/doi/10.1021/acs.jcim.4c00683" target="_blank">Read Paper</a>
+                        </div>
+                        
+                        <div class="resource-card">
+                            <!-- <div class="icon">
+                                <svg viewBox="0 0 24 24">
+                                    <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
+                                </svg>
+                            </div> -->
+                            <h3>Billion-Scale Application</h3>
+                            <p>See RAD applied to billion-scale chemical libraries with UCSF DOCK and the ML model Chemprop.</p>
+                            <a href="https://pubs.acs.org/doi/full/10.1021/acs.jcim.5c00394" target="_blank">Read Paper</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>
+                Built by the <a href="https://bkslab.org/">Shoichet Lab</a> and <a href="https://irwinlab.compbio.ucsf.edu/">Irwin Lab</a>
+            </p>
+            <p style="margin-top: 15px; font-size: 0.9em;">
+                Powered by <a href="https://github.com/unum-cloud/usearch">usearch</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>
