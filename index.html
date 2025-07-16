@@ -577,7 +577,7 @@ def score_molecule(smiles: str) -> float:
 
 <span class="comment"># Connect to the public RAD server</span>
 from rad.hnsw_service import create_remote_hnsw_service
-hnsw_service = create_remote_hnsw_service("https://rad.docking.org:8000")
+hnsw_service = create_remote_hnsw_service("https://rad.docking.org")
 
 <span class="comment"># Start Screening</span>
 from rad.traverser import RADTraverser

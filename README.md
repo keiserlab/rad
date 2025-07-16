@@ -135,7 +135,7 @@ from rad.hnsw_service import create_remote_hnsw_service
 # Start HNSW server elsewhere OR use the publicly provided server
 # python scripts/start_hnsw_server.py --database-path molecules.db --hnsw-path index.usearch --port 8000
 
-hnsw_service = create_remote_hnsw_service("https://rad.docking.org:8000")
+hnsw_service = create_remote_hnsw_service("https://rad.docking.org")
 traverser = RADTraverser(hnsw_service=hnsw_service, scoring_fn=score_fn)
 ```
 
