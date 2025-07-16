@@ -118,7 +118,8 @@ class CoordinationService:
                  hnsw_service,
                  namespace: str = "rad_coordination",
                  worker_timeout: float = 60.0,
-                 heartbeat_interval: float = 10.0):
+                 heartbeat_interval: float = 10.0,
+                 **kwargs):
         """
         Initialize coordination service with HNSW proxy capability.
         
