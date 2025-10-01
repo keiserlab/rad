@@ -50,7 +50,6 @@ class RedisScoredSet(ScoredSet):
             redis.call('HSET', KEYS[2], node_id, score)
             redis.call('HSET', KEYS[3], node_id, smiles)
         end
-        end
         """
         self.insert_script = self.r.register_script(INSERT_SCRIPT)
 
