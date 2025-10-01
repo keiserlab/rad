@@ -34,15 +34,22 @@ class RedisScoredSet(ScoredSet):
         self.smiles_set = f"{scored_name}:smiles"  # Store SMILES separately
         
         # Atomic insert script to prevent duplicates and store SMILES
+        # Handle "inf" case with the distributed workers.
+        # If we haven't seen the node at all, then add to scored set, scored list, and smiles set
+        # If we have only seen the "inf" node, then just update the score and smiles set
         INSERT_SCRIPT = """
         local node_id = ARGV[1]
         local score = ARGV[2]
         local smiles = ARGV[3]
-        local exists = redis.call('HEXISTS', KEYS[2], node_id)
-        if exists == 0 then
+        local current = redis.call('HGET', KEYS[2], node_id)
+        if (not current) then
             redis.call('HSET', KEYS[2], node_id, score)
             redis.call('HSET', KEYS[3], node_id, smiles)
             redis.call('RPUSH', KEYS[1], node_id)
+        elseif (current == "inf") then
+            redis.call('HSET', KEYS[2], node_id, score)
+            redis.call('HSET', KEYS[3], node_id, smiles)
+        end
         end
         """
         self.insert_script = self.r.register_script(INSERT_SCRIPT)
