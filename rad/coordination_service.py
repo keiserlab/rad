@@ -438,18 +438,14 @@ class CoordinationService:
         
         # Check if queue is empty and no active work
         try:
-            work_tuple = self.priority_queue.pop()
-            if work_tuple is None:
+            queue_size = self.priority_queue.r.zcard(self.priority_queue.queue_name)
+            if queue_size == 0:
                 # Check if any workers have assigned work
                 active_assignments = sum(
                     len(worker.assigned_work) for worker in self.workers.values()
                 )
                 if active_assignments == 0:
                     return True, "No more work available and no active assignments"
-            else:
-                # Put work back
-                node_id, level, score = work_tuple
-                self.priority_queue.insert(node_id, level, score)
         except Exception as e:
             logger.debug(f"Error checking queue status: {e}")
             # Continue without terminating due to queue check error
