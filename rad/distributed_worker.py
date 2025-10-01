@@ -300,9 +300,16 @@ class DistributedWorker:
                     # Check if we already have a score for this node_id
                     existing_score = self.coordination_service.scored_set.getScore(neighbor_id)
                     if existing_score is None:
-                        # Calculate new score using SMILES
+                        # Claim this node by inserting placeholder score immediately
+                        # This prevents other workers from scoring it during this batch
+                        # TODO: If worker crashes, inf placeholder remains. Consider separate claimed_set with cleanup
+                        self.coordination_service.scored_set.insert(neighbor_id, float('inf'), neighbor_smiles)
+
+                        # Calculate actual score using SMILES
                         score = self.scoring_fn(neighbor_smiles)
                         new_scores[neighbor_id] = (score, neighbor_smiles)  # Store both score and SMILES
+                    elif existing_score == float('inf'):
+                        logger.debug(f"Skipping neighbor {neighbor_id} - claimed by another worker")
                 except Exception as e:
                     logger.warning(f"Error scoring neighbor {neighbor_id} (SMILES: {neighbor_smiles}): {e}")
                     continue
